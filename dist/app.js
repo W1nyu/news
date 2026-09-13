@@ -1,22 +1,40 @@
 'use strict';
 const SECTIONS=['금융','증권','산업/재계','부동산','글로벌 경제','경제일반','중기/벤처','생활경제'];
-const state={report:null,index:[],history:[],category:'전체',query:'',limit:18,request:0,today:'',latestDate:null,collectable:[],missingDate:'',running:false,awaiting:false};
+const state={report:null,index:[],history:[],category:'전체',query:'',limit:18,request:0,today:'',latestDate:null,collectable:[],missingDate:'',running:false,awaiting:false,pollFailures:0};
 const $=id=>document.getElementById(id);
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const SAVED='저장함';
+const store={load(key,fallback){try{const v=localStorage.getItem(key);return v?JSON.parse(v):fallback;}catch{return fallback;}},save(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch{}}};
+const readList=store.load('briefing.read.v1',[]);state.read=new Set(Array.isArray(readList)?readList:[]);
+state.bookmarks=new Map(Object.entries(store.load('briefing.bookmarks.v1',{})||{}));
+function markRead(url){if(!url||state.read.has(url))return;state.read.add(url);const list=[...state.read].slice(-2000);state.read=new Set(list);store.save('briefing.read.v1',list);}
+function toggleBookmark(a){if(state.bookmarks.has(a.url))state.bookmarks.delete(a.url);else state.bookmarks.set(a.url,{url:a.url,title:a.title,source:a.source,topic:a.topic,date:a.date,published_at:a.published_at,summary:a.summary||[],keyword_matches:a.keyword_matches||[],saved_at:new Date().toISOString()});store.save('briefing.bookmarks.v1',Object.fromEntries(state.bookmarks));}
+function findArticle(url){return [...reportArticles(),...state.index].find(a=>a.url===url)||state.bookmarks.get(url)||null;}
+const escRe=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+function highlight(title,matches){const keys=[...new Set((matches||[]).filter(k=>typeof k==='string'&&k))].sort((a,b)=>b.length-a.length);if(!keys.length)return esc(title);const re=new RegExp(`(${keys.map(escRe).join('|')})`,'gi');return String(title??'').split(re).map((part,i)=>i%2?`<mark>${esc(part)}</mark>`:esc(part)).join('');}
+function renderHeadlines(){
+  const show=!state.query&&state.category!==SAVED&&!state.missingDate&&Boolean(state.report);
+  $('headlines').hidden=!show;if(!show){$('headlines').innerHTML='';return;}
+  const top=reportArticles().map((a,i)=>({a,i})).sort((x,y)=>(y.a.keyword_score||0)-(x.a.keyword_score||0)||String(y.a.published_at||'').localeCompare(String(x.a.published_at||''))).slice(0,6);
+  $('headlines').innerHTML=top.map(({a,i})=>`<button type="button" data-index="${i}"><span>${esc(a.topic)}</span><em>${highlight(a.title,a.keyword_matches)}</em></button>`).join('');
+}
 function message(text,fraction){$('status').hidden=!text;$('status-text').textContent=text;$('progress').hidden=fraction==null;$('progress-bar').style.width=`${Math.round((fraction||0)*100)}%`;}
 function dateText(value){const d=new Date(value);return Number.isNaN(d.getTime())?'':new Intl.DateTimeFormat('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Seoul'}).format(d);}
 async function json(url){const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw new Error('load');return response.json();}
 function reportArticles(){return (state.report?.topics||[]).flatMap(t=>t.articles.map(a=>({...a,topic:t.name,date:state.report.date})));}
-function card(a,extra=''){return `<article class="card"><span class="category">${esc(a.topic)}</span><h2><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.title)}</a></h2>${(a.summary||[]).map(s=>`<p>${esc(s)}</p>`).join('')}<div class="meta">${esc(a.source)} · ${esc(dateText(a.published_at))} 발행</div>${extra}</article>`;}
+function card(a,extra=''){const saved=state.bookmarks.has(a.url);return `<article class="card${state.read.has(a.url)?' read':''}"><div class="card-top"><span class="category">${esc(a.topic)}</span><button type="button" class="bookmark" data-bookmark="${esc(a.url)}" aria-pressed="${saved}" aria-label="${saved?'북마크 해제':'북마크'}">${saved?'★':'☆'}</button></div><h2><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${highlight(a.title,a.keyword_matches)}</a></h2>${(a.summary||[]).map(s=>`<p>${esc(s)}</p>`).join('')}<div class="meta">${esc(a.source)} · ${esc(dateText(a.published_at))} 발행</div>${extra}</article>`;}
 function renderBanner(){const show=Boolean(state.today)&&(state.latestDate||'')<state.today&&!state.running;$('missing-today').hidden=!show;if(show)$('missing-today-text').textContent=`오늘(${state.today.slice(5)}) 보고서가 아직 없습니다.${state.latestDate?` 최근 보고서는 ${state.latestDate.slice(5)}입니다.`:''}`;}
 function renderDates(){const dates=new Map(state.history.map(h=>[h.date,true]));state.collectable.forEach(d=>{if(!dates.has(d))dates.set(d,false);});const selected=$('date').value;$('date').innerHTML='<option value="">최신 보고서</option>'+[...dates].sort((a,b)=>b[0].localeCompare(a[0])).map(([d,has])=>`<option value="${esc(d)}"${has?'':' data-missing="1"'}>${esc(d)}${has?'':' (미수집)'}</option>`).join('');$('date').value=dates.has(selected)?selected:'';}
 function render(){
-  $('categories').innerHTML=['전체',...SECTIONS].map(s=>`<button type="button" data-category="${esc(s)}" aria-pressed="${state.category===s}">${esc(s)}</button>`).join('');
+  $('categories').innerHTML=['전체',...SECTIONS,SAVED].map(s=>`<button type="button" data-category="${esc(s)}" aria-pressed="${state.category===s}">${esc(s)}${s===SAVED?` (${state.bookmarks.size})`:''}</button>`).join('');
+  renderHeadlines();
   if(state.missingDate){$('articles').innerHTML=`<div class="missing"><p>${esc(state.missingDate)} 보고서가 없습니다.</p><button type="button" data-collect="${esc(state.missingDate)}">이 날짜 보고서 만들기</button></div>`;$('more').hidden=true;$('updated').textContent='';setCollectButtons(state.running);renderBanner();return;}
-  let articles=state.query?state.index:reportArticles();
-  if(state.category!=='전체')articles=articles.filter(a=>a.topic===state.category);
+  const saved=state.category===SAVED;
+  let articles=saved?[...state.bookmarks.values()].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.published_at||'').localeCompare(String(a.published_at||''))):(state.query?state.index:reportArticles());
+  if(state.category!=='전체'&&!saved)articles=articles.filter(a=>a.topic===state.category);
   if(state.query)articles=articles.filter(a=>[a.title,a.source,a.topic,a.date,...(a.summary||[])].join(' ').toLocaleLowerCase().includes(state.query));
-  $('articles').innerHTML=articles.length?articles.slice(0,state.limit).map(a=>card(a,state.query?`<button class="open-report" data-date="${esc(a.date)}">${esc(a.date)} 보고서 보기</button>`:'')).join(''):'<p class="empty">조건에 맞는 뉴스가 없습니다.</p>';
+  const showDate=Boolean(state.query)||saved;
+  $('articles').innerHTML=articles.length?articles.slice(0,state.limit).map(a=>card(a,showDate?`<button class="open-report" data-date="${esc(a.date)}">${esc(a.date)} 보고서 보기</button>`:'')).join(''):`<p class="empty">${saved?'저장한 뉴스가 없습니다. 카드의 ☆를 눌러 저장하세요.':'조건에 맞는 뉴스가 없습니다.'}</p>`;
   $('more').hidden=articles.length<=state.limit;
   $('updated').textContent=state.report?`${state.report.date} · ${dateText(state.report.generated_at)} 갱신`:'';
   renderBanner();
@@ -35,10 +53,16 @@ function setCollectButtons(disabled){document.querySelectorAll('[data-collect]')
 $('date').onchange=()=>{state.query='';$('search').value='';state.limit=18;const option=$('date').selectedOptions[0];if(option&&option.dataset.missing){state.missingDate=$('date').value;render();return;}loadReport($('date').value);};
 $('search').oninput=()=>{state.query=$('search').value.trim().toLocaleLowerCase();state.limit=18;if(state.query&&state.missingDate){state.missingDate='';$('date').value='';}render();};
 $('categories').onclick=e=>{if(e.target.dataset.category){state.category=e.target.dataset.category;state.limit=18;render();}};
-$('articles').onclick=e=>{const date=e.target.dataset.date;if(!date)return;$('date').value=date;state.query='';$('search').value='';state.category='전체';state.limit=18;loadReport(date);};
+$('articles').onclick=e=>{
+  const mark=e.target.closest('[data-bookmark]');if(mark){const a=findArticle(mark.dataset.bookmark);if(a)toggleBookmark(a);render();return;}
+  const link=e.target.closest('h2 a');if(link){markRead(link.href);link.closest('.card').classList.add('read');return;}
+  const date=e.target.dataset.date;if(!date)return;$('date').value=date;state.query='';$('search').value='';state.category='전체';state.limit=18;loadReport(date);};
+$('articles').addEventListener('auxclick',e=>{const link=e.target.closest('h2 a');if(link&&e.button===1){markRead(link.href);link.closest('.card').classList.add('read');}});
+$('headlines').onclick=e=>{const button=e.target.closest('[data-index]');if(!button)return;const i=Number(button.dataset.index);state.category='전체';state.query='';$('search').value='';if(state.limit<=i)state.limit=Math.ceil((i+1)/18)*18;render();const target=$('articles').children[i];if(!target)return;target.scrollIntoView({behavior:'smooth',block:'center'});target.classList.add('flash');setTimeout(()=>target.classList.remove('flash'),1500);};
 $('more').onclick=()=>{state.limit+=18;render();};
 async function poll(){
   try{const status=await json('/api/status');
+    state.pollFailures=0;
     Object.assign(state,{today:status.today||'',latestDate:status.latest_date??null,collectable:status.collectable_dates||[],running:Boolean(status.running)});
     setCollectButtons(state.running);
     if(state.running){state.awaiting=true;const p=status.progress;message(p&&p.total?`수집 중 · ${p.done}/${p.total}${p.section?' '+p.section:''}`:'뉴스를 수집하고 있습니다.',p&&p.total?p.done/p.total:0);renderBanner();setTimeout(poll,2000);return;}
@@ -46,7 +70,7 @@ async function poll(){
       if(status.ok){const date=status.date||'';state.missingDate='';$('date').value=date;state.limit=18;await loadArchive();$('date').value=date;await loadReport(date);message('새 보고서가 준비됐습니다.');}
       else message(status.message);}
     renderDates();renderBanner();
-  }catch{setCollectButtons(false);message('수집 상태 확인에 실패했습니다. 잠시 후 새로고침해 주세요.');}
+  }catch{if(state.awaiting&&++state.pollFailures<10){message('수집 상태를 다시 확인하는 중…');setTimeout(poll,2000);return;}state.awaiting=false;state.pollFailures=0;setCollectButtons(false);message('수집 상태 확인에 실패했습니다. 잠시 후 새로고침해 주세요.');}
 }
 async function startCollect(date){
   message(date?`${date} 보고서 수집 요청 중…`:'수집 요청 중…');setCollectButtons(true);state.awaiting=true;
