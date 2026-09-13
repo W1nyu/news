@@ -1,14 +1,25 @@
-param(
-    [switch]$Open
+﻿param(
+    [switch]$Open,
+    [switch]$IfMissing
 )
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $python = Get-Command python -ErrorAction Stop
 
+if ($IfMissing) {
+    $kstToday = [DateTime]::UtcNow.AddHours(9).ToString('yyyy-MM-dd')
+    $todayFile = Join-Path $projectRoot "data\$kstToday.json"
+    if (Test-Path -LiteralPath $todayFile) {
+        Write-Host "오늘($kstToday) 보고서가 이미 있어 수집을 건너뜁니다."
+        exit 0
+    }
+}
+
 & $python.Source (Join-Path $PSScriptRoot 'collector.py')
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+$collectExit = $LASTEXITCODE
+if ($collectExit -ne 0 -and -not ($Open -and $collectExit -eq 2)) {
+    exit $collectExit
 }
 
 if ($Open) {
@@ -22,8 +33,7 @@ if ($Open) {
     }
 
     if (-not $isServing) {
-        $pythonExe = $python.Source
-        Start-Process -FilePath $pythonExe -ArgumentList @((Join-Path $PSScriptRoot 'server.py')) -WorkingDirectory $projectRoot -WindowStyle Hidden
+        Start-Process -FilePath $python.Source -ArgumentList @((Join-Path $PSScriptRoot 'server.py')) -WorkingDirectory $projectRoot -WindowStyle Hidden
         Start-Sleep -Seconds 1
     }
     Start-Process $siteUrl
