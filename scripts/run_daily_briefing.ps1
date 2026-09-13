@@ -5,7 +5,6 @@
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$python = Get-Command python -ErrorAction Stop
 
 if ($IfMissing) {
     $kstToday = [DateTime]::UtcNow.AddHours(9).ToString('yyyy-MM-dd')
@@ -15,6 +14,8 @@ if ($IfMissing) {
         exit 0
     }
 }
+
+$python = Get-Command python -ErrorAction Stop
 
 & $python.Source (Join-Path $PSScriptRoot 'collector.py')
 $collectExit = $LASTEXITCODE
