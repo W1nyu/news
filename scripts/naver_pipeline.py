@@ -67,16 +67,27 @@ def valid_time(value, now, age):
         return 0 <= (now-stamp).total_seconds() <= age*3600
     except (TypeError,ValueError): return False
 
-def collect():
+def collectable_dates(now=None):
+    today=(now or datetime.now(KST)).date()
+    return [(today-timedelta(days=i)).isoformat() for i in range(3)]
+
+def published_date(value):
+    try: return datetime.fromisoformat(value).astimezone(KST).date().isoformat()
+    except (TypeError,ValueError,AttributeError): return None
+
+def collect(target_date=None,progress=None):
     config=json.loads((ROOT/'config/sections.json').read_text(encoding='utf-8'))
     rules=load_rules()
     keywords=[r['keyword'] for r in rules]
     now=datetime.now(KST);started=time.monotonic();excluded=Counter();status=[];topics=[]
+    report_date=target_date or now.date().isoformat()
+    sections=config['sections']
+    if progress: progress(0,len(sections),'')
     cache_path=DATA/'article-cache.json'
     try: cache=json.loads(cache_path.read_text(encoding='utf-8'))
     except (OSError,ValueError): cache={}
     used=set();titles=set();gathered=0;hits=0
-    for section in config['sections']:
+    for index,section in enumerate(sections,1):
         selected=[]
         url=f"https://news.naver.com/breakingnews/section/101/{section['id']}"
         try:
@@ -105,6 +116,8 @@ def collect():
                 if reason: excluded[reason]+=1;continue
                 if not valid_time(details.get('published_at'),now,config['max_age_hours']):
                     excluded['date_outside_window']+=1;continue
+                if target_date and published_date(details.get('published_at'))!=target_date:
+                    excluded['date_outside_target']+=1;continue
                 title=details.get('title') or option['title']
                 fingerprint=re.sub(r'\W','',title).casefold()
                 if fingerprint in titles: excluded['duplicate']+=1;continue
@@ -119,10 +132,11 @@ def collect():
             status.append({'id':section['id'],'name':section['name'],'status':'error','count':0,'message':str(error)[:120]})
         topics.append({'id':section['id'],'name':section['name'],'articles':selected,'article_count':len(selected),
                        'checkpoint':CHECKPOINTS[section['name']]})
+        if progress: progress(index,len(sections),section['name'])
         time.sleep(.2)
     cache={k:v for k,v in cache.items() if now.timestamp()-v['checked_epoch']<72*3600}
     atomic_json(cache_path,cache)
-    return {'schema_version':4,'date':now.date().isoformat(),'generated_at':datetime.now(KST).isoformat(timespec='seconds'),
+    return {'schema_version':4,'date':report_date,'generated_at':datetime.now(KST).isoformat(timespec='seconds'),
             'timezone':'Asia/Seoul','keywords':keywords,'keyword_rules':rules,'topics':topics,'source_results':status,'excluded':dict(excluded),
             'stats':{'selected':len(used),'collected':gathered,'topics':sum(bool(t['articles']) for t in topics),
                      'sources_ok':sum(s['status']=='ok' for s in status),'cache_hits':hits,'elapsed_seconds':round(time.monotonic()-started,1)},

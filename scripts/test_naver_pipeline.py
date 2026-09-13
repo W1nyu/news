@@ -2,7 +2,7 @@ import json
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import patch
-from naver_pipeline import ROOT, article_url, candidates, collect, valid_time, KST
+from naver_pipeline import ROOT, article_url, candidates, collect, valid_time, KST, collectable_dates, published_date
 
 class NaverPipelineTests(unittest.TestCase):
     def test_external_domain_rejected(self):
@@ -43,5 +43,35 @@ class NaverPipelineTests(unittest.TestCase):
             report=collect()
         self.assertEqual(report['stats']['selected'],0)
         self.assertTrue(all(s['status']=='shortfall' and s['shortfall']==3 for s in report['source_results']))
+
+    def test_collectable_dates_three_days_kst(self):
+        now=datetime(2026,9,14,0,30,tzinfo=KST)
+        self.assertEqual(collectable_dates(now),['2026-09-14','2026-09-13','2026-09-12'])
+
+    def test_published_date_uses_kst_midnight_boundary(self):
+        self.assertEqual(published_date('2026-09-13T23:59:59+09:00'),'2026-09-13')
+        self.assertEqual(published_date('2026-09-14T00:00:00+09:00'),'2026-09-14')
+        self.assertEqual(published_date('2026-09-13T15:00:00+00:00'),'2026-09-14')
+        self.assertIsNone(published_date(None));self.assertIsNone(published_date('nope'))
+
+    def test_target_date_filters_and_progress_called(self):
+        now=datetime.now(KST);yesterday=(now-timedelta(days=1)).date().isoformat()
+        def fake_fetch(url):
+            if '/breakingnews/' in url:
+                sid=url.rsplit('/',1)[-1]
+                return '<div class="section_latest_article">'+''.join(f'<a class="sa_text_title" href="https://n.news.naver.com/mnews/article/999/{sid}{n}">검증용 경제 기사 제목 {sid} {n}</a>' for n in range(12))+'</div>'
+            return '<div>'+url+'</div>'
+        def fake_inspect(page,source):
+            n=int(page.removesuffix('</div>')[-1])
+            stamp=(now-timedelta(minutes=1)) if n%2 else (now-timedelta(days=1))
+            return {'title':page.removesuffix('</div>').rsplit('/',1)[-1],'published_at':stamp.isoformat(),'summary':['검증용 핵심 문장입니다.'],'access':'public_checked'},None
+        calls=[]
+        with patch('naver_pipeline.fetch',side_effect=fake_fetch),patch('naver_pipeline.inspect_article',side_effect=fake_inspect),patch('naver_pipeline.atomic_json'),patch('naver_pipeline.time.sleep'):
+            report=collect(target_date=yesterday,progress=lambda d,t,s:calls.append((d,t,s)))
+        self.assertEqual(report['date'],yesterday)
+        self.assertTrue(all(published_date(a['published_at'])==yesterday for t in report['topics'] for a in t['articles']))
+        self.assertGreater(report['stats']['selected'],0)
+        self.assertGreater(report['excluded'].get('date_outside_target',0),0)
+        self.assertEqual(calls[0],(0,8,''));self.assertEqual(len(calls),9);self.assertEqual(calls[-1][0],8)
 
 if __name__=='__main__': unittest.main()
