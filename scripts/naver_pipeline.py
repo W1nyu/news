@@ -146,15 +146,17 @@ def save_report(payload):
     payload.pop('pdf_url',None)
     for folder in (DATA,PUBLIC):
         atomic_json(folder/f"{payload['date']}.json",payload)
-        atomic_json(folder/'latest.json',payload)
-    history=[];search=[]
+    history=[];search=[];latest=None
     for path in sorted(DATA.glob('????-??-??.json'),reverse=True):
         try: report=json.loads(path.read_text(encoding='utf-8'))
         except (OSError,ValueError): continue
         if report.get('schema_version')!=4: continue
+        if latest is None: latest=report
         history.append({'date':report['date'],'selected':report['stats']['selected']})
         for topic in report['topics']:
             search.extend({**a,'date':report['date'],'topic':topic['name']} for a in topic['articles'])
-    atomic_json(DATA/'history.json',history);atomic_json(PUBLIC/'history.json',history)
+    for folder in (DATA,PUBLIC):
+        atomic_json(folder/'history.json',history)
+        atomic_json(folder/'latest.json',latest or payload)
     atomic_json(PUBLIC/'search.json',search)
     atomic_json(DATA/'run-status.json',{'ok':True,'date':payload['date'],'stats':payload['stats'],'sections':payload['source_results'],'excluded':payload['excluded']})

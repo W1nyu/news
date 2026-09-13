@@ -1,8 +1,10 @@
 import json
+import tempfile
 import unittest
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
-from naver_pipeline import ROOT, article_url, candidates, collect, valid_time, KST, collectable_dates, published_date
+from naver_pipeline import ROOT, article_url, candidates, collect, valid_time, KST, collectable_dates, published_date, save_report
 
 class NaverPipelineTests(unittest.TestCase):
     def test_external_domain_rejected(self):
@@ -73,5 +75,22 @@ class NaverPipelineTests(unittest.TestCase):
         self.assertGreater(report['stats']['selected'],0)
         self.assertGreater(report['excluded'].get('date_outside_target',0),0)
         self.assertEqual(calls[0],(0,8,''));self.assertEqual(len(calls),9);self.assertEqual(calls[-1][0],8)
+
+    def test_save_report_keeps_latest_date(self):
+        def payload(date):
+            return {'schema_version':4,'date':date,'generated_at':f'{date}T08:00:00+09:00','topics':[{'id':'259','name':'금융','articles':[{'url':f'https://n.news.naver.com/mnews/article/001/{date[-2:]}','title':f'{date} 기사','summary':['요약'],'published_at':f'{date}T07:00:00+09:00','source':'테스트','source_id':'naver'}]}],
+                    'stats':{'selected':1},'source_results':[],'excluded':{},'pdf_url':'reports/x.pdf'}
+        with tempfile.TemporaryDirectory() as folder:
+            data=Path(folder)/'data';public=Path(folder)/'public'
+            with patch('naver_pipeline.DATA',data),patch('naver_pipeline.PUBLIC',public):
+                save_report(payload('2026-09-13'))
+                save_report(payload('2026-09-12'))
+                latest=json.loads((data/'latest.json').read_text(encoding='utf-8'))
+                self.assertEqual(latest['date'],'2026-09-13')
+                self.assertEqual(json.loads((public/'latest.json').read_text(encoding='utf-8'))['date'],'2026-09-13')
+                self.assertNotIn('pdf_url',latest)
+                self.assertEqual([h['date'] for h in json.loads((data/'history.json').read_text(encoding='utf-8'))],['2026-09-13','2026-09-12'])
+                self.assertEqual(json.loads((data/'run-status.json').read_text(encoding='utf-8'))['date'],'2026-09-12')
+                self.assertEqual(len(json.loads((public/'search.json').read_text(encoding='utf-8'))),2)
 
 if __name__=='__main__': unittest.main()
