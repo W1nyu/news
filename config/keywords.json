@@ -1,0 +1,44 @@
+{
+  "rules": [
+    {
+      "keyword": "기준금리",
+      "weight": 1
+    },
+    {
+      "keyword": "금리",
+      "weight": 1
+    },
+    {
+      "keyword": "물가",
+      "weight": 1
+    },
+    {
+      "keyword": "환율",
+      "weight": 1
+    },
+    {
+      "keyword": "부동산",
+      "weight": 1
+    },
+    {
+      "keyword": "가계부채",
+      "weight": 1
+    },
+    {
+      "keyword": "주식",
+      "weight": 1
+    },
+    {
+      "keyword": "반도체",
+      "weight": 1
+    },
+    {
+      "keyword": "AI",
+      "weight": 1
+    },
+    {
+      "keyword": "세금",
+      "weight": 1
+    }
+  ]
+}
