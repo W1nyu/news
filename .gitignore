@@ -7,8 +7,3 @@ dist/data/*.json
 !dist/data/.gitkeep
 logs/
 data/*.lock
-output/
-dist/reports/
-*-qa-*.png
-reference*.png
-final-report-*.png

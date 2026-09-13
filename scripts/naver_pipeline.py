@@ -11,7 +11,6 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from bs4 import BeautifulSoup
 from article_details import inspect_article
-from report_pdf import build_pdf
 from keyword_settings import load_rules, keyword_score
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -130,8 +129,7 @@ def collect():
             'notice':'네이버 경제 8개 섹션 | 발행일 확인 · 무료 기사 | 본문 핵심 문장 발췌'}
 
 def save_report(payload):
-    build_pdf(payload)
-    payload['pdf_url']=f"reports/{payload['date']}.pdf"
+    payload.pop('pdf_url',None)
     for folder in (DATA,PUBLIC):
         atomic_json(folder/f"{payload['date']}.json",payload)
         atomic_json(folder/'latest.json',payload)

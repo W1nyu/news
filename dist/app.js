@@ -13,8 +13,6 @@ function render(){
   if(state.query)articles=articles.filter(a=>[a.title,a.source,a.topic,a.date,...(a.summary||[])].join(' ').toLocaleLowerCase().includes(state.query));
   $('articles').innerHTML=articles.length?articles.slice(0,state.limit).map(a=>`<article class="card"><span class="category">${esc(a.topic)}</span><h2><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.title)}</a></h2>${(a.summary||[]).map(s=>`<p>${esc(s)}</p>`).join('')}<div class="meta">${esc(a.source)} · ${esc(dateText(a.published_at))} 발행</div>${state.query?`<button class="open-report" data-date="${esc(a.date)}">${esc(a.date)} 보고서 보기</button>`:''}</article>`).join(''):'<p class="empty">조건에 맞는 뉴스가 없습니다.</p>';
   $('more').hidden=articles.length<=state.limit;
-  $('pdf').hidden=!state.report?.pdf_url;
-  if(state.report?.pdf_url)$('pdf').href=state.report.pdf_url+'?t='+encodeURIComponent(state.report.generated_at);
   $('updated').textContent=state.report?`${state.report.date} · ${dateText(state.report.generated_at)} 갱신`:'';
 }
 async function loadReport(date=''){
