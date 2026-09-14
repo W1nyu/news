@@ -33,13 +33,13 @@
 ### 수집 흐름 변경 (`collect()`)
 - `selected_all`: 이번 실행에서 지금까지 선택된 대표 기사 목록(전 섹션). `RELATED_LIMIT = 4`, `EXTRA_FETCH_LIMIT = 8`.
 - 후보 순회(기존 루프) 안에서, 검증(무료·발행 시각·72시간/대상 날짜)을 통과한 기사에 대해:
-  - `selected_all` 중 `similar(제목, 대표 제목)`이 참이고 `related`가 4건 미만인 첫 대표가 있으면 → 그 대표의 `related`에 `{url, title, source, published_at, section}`을 추가하고 `used`·`titles`에 등록하며 `excluded['grouped'] += 1`. 한도(`limit`)에는 산입하지 않는다.
-  - 없으면 기존처럼 `selected`에 추가하고 `selected_all`에도 추가한다(`related: []` 포함).
+  - `selected_all` 중 `similar(제목, 대표 제목)`이 참인 첫 대표가 있으면 → `related`가 4건 미만이면 그 대표의 `related`에 `{url, title, source, published_at, section}`을 추가하고 `excluded['grouped'] += 1`, 이미 4건이면 버리고 `excluded['grouped_overflow'] += 1`. 어느 쪽이든 `used`·`titles`에 등록하고 한도(`limit`)에는 산입하지 않는다(유사 기사는 새 카드가 되지 않는다).
+  - 유사한 대표가 없으면 기존처럼 `selected`에 추가하고 `selected_all`에도 추가한다(`related: []` 포함).
 - 한도를 채워 `break`한 뒤: 남은 후보 중 `used`에 없고 제목이 `selected_all`의 어느 대표와 `similar`한 것만 골라, 섹션당 최대 8건까지 검증 후 위와 같이 `related`에 붙인다. 검증 실패는 기존 사유로 집계한다.
 - 중복 제목(`fingerprint`) 검사는 유사 판정보다 먼저 적용된다(완전 동일 제목은 지금처럼 `duplicate`).
 - 캐시는 기존 30분 캐시를 그대로 쓴다(관련 기사도 캐시 대상).
 - `inspect_article` 호출에 `title_hint=option['title']`, `keywords=keywords`를 넘긴다.
-- `stats`에 `'related': 전체 관련 기사 수` 추가. `schema_version` 4 유지.
+- `stats`에 `'related': 전체 관련 기사 수` 추가. `stats['selected']`는 대표 기사 수. `schema_version` 4 유지.
 - 관련 기사도 동일한 검증을 통과해야 한다. 미확인·유료·기간 밖 기사는 관련으로도 넣지 않는다.
 
 ### `save_report`
