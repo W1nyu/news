@@ -8,7 +8,7 @@ const store={load(key,fallback){try{const v=localStorage.getItem(key);return v?J
 const readList=store.load('briefing.read.v1',[]);state.read=new Set(Array.isArray(readList)?readList:[]);
 state.bookmarks=new Map(Object.entries(store.load('briefing.bookmarks.v1',{})||{}).filter(([,v])=>v&&typeof v==='object'&&typeof v.url==='string'));
 function markRead(url){if(!url||state.read.has(url))return;state.read.add(url);const list=[...state.read].slice(-2000);state.read=new Set(list);store.save('briefing.read.v1',list);}
-function toggleBookmark(a){if(state.bookmarks.has(a.url))state.bookmarks.delete(a.url);else state.bookmarks.set(a.url,{url:a.url,title:a.title,source:a.source,topic:a.topic,date:a.date,published_at:a.published_at,summary:a.summary||[],keyword_matches:a.keyword_matches||[],saved_at:new Date().toISOString()});store.save('briefing.bookmarks.v1',Object.fromEntries(state.bookmarks));}
+function toggleBookmark(a){if(state.bookmarks.has(a.url))state.bookmarks.delete(a.url);else state.bookmarks.set(a.url,{url:a.url,title:a.title,source:a.source,topic:a.topic,date:a.date,published_at:a.published_at,summary:a.summary||[],related:(Array.isArray(a.related)?a.related:[]),keywords:state.keywords,keyword_matches:a.keyword_matches||[],saved_at:new Date().toISOString()});store.save('briefing.bookmarks.v1',Object.fromEntries(state.bookmarks));}
 function findArticle(url){return [...reportArticles(),...state.index].find(a=>a.url===url)||state.bookmarks.get(url)||null;}
 const escRe=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 function highlight(title,matches){const keys=[...new Set((Array.isArray(matches)?matches:[]).filter(k=>typeof k==='string'&&k))].sort((a,b)=>b.length-a.length);if(!keys.length)return esc(title);const re=new RegExp(`(${keys.map(escRe).join('|')})`,'gi');return String(title??'').split(re).map((part,i)=>i%2?`<mark>${esc(part)}</mark>`:esc(part)).join('');}
@@ -24,12 +24,15 @@ async function json(url){const response=await fetch(url,{cache:'no-store'});if(!
 function reportArticles(){return (state.report?.topics||[]).flatMap(t=>t.articles.map(a=>({...a,topic:t.name,date:state.report.date})));}
 const kstDate=value=>{const d=new Date(value);return Number.isNaN(d.getTime())?'':new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul'}).format(d);};
 function shiftDate(iso,days){const d=new Date(`${iso}T00:00:00Z`);d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
-function rangeBounds(){if(!state.query||state.range==='all')return null;if(state.range==='custom'){let from=state.from,to=state.to;if(from&&to&&from>to)[from,to]=[to,from];return {from,to};}const days=Number(state.range);return {from:shiftDate(state.today||kstDate(Date.now()),-(days-1)),to:''};}
+function rangeBounds(){if(!state.query||state.range==='all')return null;if(state.range==='custom'){let from=state.from,to=state.to;if(!from&&!to)return null;if(from&&to&&from>to)[from,to]=[to,from];return {from,to};}const days=Number(state.range);return {from:shiftDate(state.today||kstDate(Date.now()),-(days-1)),to:''};}
 function inRange(a,bounds){if(!bounds)return true;const d=kstDate(a.published_at);return Boolean(d)&&(!bounds.from||d>=bounds.from)&&(!bounds.to||d<=bounds.to);}
 function baseArticles(){if(state.category===SAVED)return [...state.bookmarks.values()].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.published_at||'').localeCompare(String(a.published_at||'')));return state.query?state.index:reportArticles();}
 function renderPublishers(list){const counts=new Map();list.forEach(a=>{if(a.source)counts.set(a.source,(counts.get(a.source)||0)+1);});const options=[...counts].sort((x,y)=>y[1]-x[1]||x[0].localeCompare(y[0]));if(!counts.has(state.publisher))state.publisher='';$('publisher').innerHTML='<option value="">전체 언론사</option>'+options.map(([s,n])=>`<option value="${esc(s)}">${esc(s)} (${n})</option>`).join('');$('publisher').value=state.publisher;}
 function searchText(a){return [a.title,a.source,a.topic,a.date,...(Array.isArray(a.summary)?a.summary:[]),...(Array.isArray(a.related)?a.related.map(r=>r&&r.title):[])].join(' ').toLocaleLowerCase();}
-function card(a,extra=''){const saved=state.bookmarks.has(a.url);return `<article class="card${state.read.has(a.url)?' read':''}" data-url="${esc(a.url)}"><div class="card-top"><span class="category">${esc(a.topic)}</span><button type="button" class="bookmark" data-bookmark="${esc(a.url)}" aria-pressed="${saved}" aria-label="${saved?'북마크 해제':'북마크'}">${saved?'★':'☆'}</button></div><h2><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${highlight(a.title,a.keyword_matches)}</a></h2>${(Array.isArray(a.summary)?a.summary:[]).map(s=>`<p>${esc(s)}</p>`).join('')}<div class="meta">${esc(a.source)} · ${esc(dateText(a.published_at))} 발행</div>${extra}</article>`;}
+function keywordsFor(a){return state.category===SAVED&&Array.isArray(a.keywords)?a.keywords:state.keywords;}
+function relatedList(a){const items=(Array.isArray(a.related)?a.related:[]).filter(r=>r&&typeof r.url==='string');if(!items.length)return '';return `<button type="button" class="related-toggle" aria-expanded="false">관련 보도 ${items.length}건 ▸</button><ul class="related" hidden>${items.map(r=>`<li class="${state.read.has(r.url)?'read':''}"><span>${esc(r.source)}</span><a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" data-related="${esc(r.url)}">${esc(r.title)}</a><time>${esc(dateText(r.published_at))}</time></li>`).join('')}</ul>`;}
+async function loadKeywords(){try{const data=await json('/api/keywords');state.keywords=(data.rules||[]).map(r=>r&&r.keyword).filter(k=>typeof k==='string'&&k);}catch{state.keywords=[];}render();}
+function card(a,extra=''){const saved=state.bookmarks.has(a.url);const keys=keywordsFor(a);return `<article class="card${state.read.has(a.url)?' read':''}" data-url="${esc(a.url)}"><div class="card-top"><span class="category">${esc(a.topic)}</span><button type="button" class="bookmark" data-bookmark="${esc(a.url)}" aria-pressed="${saved}" aria-label="${saved?'북마크 해제':'북마크'}">${saved?'★':'☆'}</button></div><h2><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${highlight(a.title,a.keyword_matches)}</a></h2>${(Array.isArray(a.summary)?a.summary:[]).map(s=>`<p>${highlight(s,keys)}</p>`).join('')}<div class="meta">${esc(a.source)} · ${esc(dateText(a.published_at))} 발행</div>${relatedList(a)}${extra}</article>`;}
 function renderBanner(){const show=Boolean(state.today)&&(state.latestDate||'')<state.today&&!state.running;$('missing-today').hidden=!show;if(show)$('missing-today-text').textContent=`오늘(${state.today.slice(5)}) 보고서가 아직 없습니다.${state.latestDate?` 최근 보고서는 ${state.latestDate.slice(5)}입니다.`:''}`;}
 function renderDates(){const dates=new Map(state.history.map(h=>[h.date,true]));state.collectable.forEach(d=>{if(!dates.has(d))dates.set(d,false);});const selected=$('date').value;$('date').innerHTML='<option value="">최신 보고서</option>'+[...dates].sort((a,b)=>b[0].localeCompare(a[0])).map(([d,has])=>`<option value="${esc(d)}"${has?'':' data-missing="1"'}>${esc(d)}${has?'':' (미수집)'}</option>`).join('');$('date').value=dates.has(selected)?selected:'';}
 function render(){
@@ -65,9 +68,11 @@ $('search').oninput=()=>{state.query=$('search').value.trim().toLocaleLowerCase(
 $('categories').onclick=e=>{if(e.target.dataset.category){state.category=e.target.dataset.category;state.limit=18;render();}};
 $('articles').onclick=e=>{
   const mark=e.target.closest('[data-bookmark]');if(mark){const a=findArticle(mark.dataset.bookmark);if(a)toggleBookmark(a);render();return;}
+  const toggle=e.target.closest('.related-toggle');if(toggle){const list=toggle.nextElementSibling;const open=list.hidden;list.hidden=!open;toggle.setAttribute('aria-expanded',String(open));toggle.textContent=toggle.textContent.replace(/[▸▾]$/,open?'▾':'▸');return;}
+  const rel=e.target.closest('[data-related]');if(rel){markRead(rel.dataset.related);rel.closest('li').classList.add('read');return;}
   const link=e.target.closest('h2 a');if(link){markRead(link.closest('.card').dataset.url);link.closest('.card').classList.add('read');return;}
   const date=e.target.dataset.date;if(!date)return;$('date').value=date;state.query='';$('search').value='';state.category='전체';state.limit=18;loadReport(date);};
-$('articles').addEventListener('auxclick',e=>{const link=e.target.closest('h2 a');if(link&&e.button===1){markRead(link.closest('.card').dataset.url);link.closest('.card').classList.add('read');}});
+$('articles').addEventListener('auxclick',e=>{if(e.button!==1)return;const rel=e.target.closest('[data-related]');if(rel){markRead(rel.dataset.related);rel.closest('li').classList.add('read');return;}const link=e.target.closest('h2 a');if(link){markRead(link.closest('.card').dataset.url);link.closest('.card').classList.add('read');}});
 $('headlines').onclick=e=>{const button=e.target.closest('[data-index]');if(!button)return;const i=Number(button.dataset.index);state.category='전체';state.query='';$('search').value='';if(state.limit<=i)state.limit=Math.ceil((i+1)/18)*18;render();const target=$('articles').children[i];if(!target)return;target.scrollIntoView({behavior:'smooth',block:'center'});target.classList.add('flash');setTimeout(()=>target.classList.remove('flash'),1500);};
 $('more').onclick=()=>{state.limit+=18;render();};
 $('range').onchange=()=>{state.range=$('range').value;state.limit=18;render();};
@@ -95,7 +100,7 @@ async function startCollect(date){
   catch(error){state.awaiting=false;setCollectButtons(false);message(error.shown?error.message:'수집 서버에 연결하지 못했습니다. 바탕화면의 「아침 경제 수집」 바로가기를 실행해 주세요.');}
 }
 document.addEventListener('click',e=>{const button=e.target.closest('[data-collect]');if(button&&!button.disabled)startCollect(button.dataset.collect||'');});
-loadReport();loadArchive();poll();
+loadReport();loadArchive();loadKeywords();poll();
 
 function keywordRow(rule={keyword:'',weight:1}){
   const row=document.createElement('div');row.className='keyword-row';
@@ -113,7 +118,7 @@ $('keyword-add').onclick=()=>{if($('keyword-rows').children.length>=100){$('keyw
 $('keyword-form').onsubmit=async e=>{
   e.preventDefault();const rules=[...document.querySelectorAll('.keyword-row')].map(row=>({keyword:row.querySelector('.keyword-name').value.trim(),weight:Number(row.querySelector('.keyword-weight').value)}));
   $('keyword-save').disabled=true;
-  try{const response=await fetch('/api/keywords',{method:'POST',headers:{'Content-Type':'application/json','X-Briefing-Request':'collect'},body:JSON.stringify({rules})});const data=await response.json();if(!response.ok)throw new Error(data.error||'저장 실패');$('keyword-status').textContent='저장했습니다. 다음 수집부터 적용됩니다.';}
+  try{const response=await fetch('/api/keywords',{method:'POST',headers:{'Content-Type':'application/json','X-Briefing-Request':'collect'},body:JSON.stringify({rules})});const data=await response.json();if(!response.ok)throw new Error(data.error||'저장 실패');state.keywords=(data.rules||[]).map(r=>r.keyword);render();$('keyword-status').textContent='저장했습니다. 다음 수집부터 적용됩니다.';}
   catch(error){$('keyword-status').textContent=error.message||'저장하지 못했습니다.';}
   finally{$('keyword-save').disabled=false;}
 };
