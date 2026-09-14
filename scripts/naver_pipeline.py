@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from bs4 import BeautifulSoup
-from article_details import inspect_article
+from article_details import inspect_article, bigrams, dice
 from keyword_settings import load_rules, keyword_score
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -26,6 +26,24 @@ CHECKPOINTS={
  '경제일반':'통계의 기준 기간과 정책의 시행일·적용 대상을 확인하세요.',
  '중기/벤처':'자금조달 규모와 사업화 계획, 지원 조건을 확인하세요.',
  '생활경제':'가격·소비 변화가 생활비에 미치는 영향을 확인하세요.'}
+DIRECTION_PAIRS=[('상승','하락'),('증가','감소'),('매수','매도'),('흑자','적자'),('인상','인하'),('확대','축소'),('급등','급락'),('강세','약세')]
+RELATED_LIMIT=4
+EXTRA_FETCH_LIMIT=8
+
+def title_key(title):
+    text=re.sub(r'\[[^\]]*\]|\([^)]*\)|<[^>]*>',' ',str(title or ''))
+    return re.sub(r'\s+',' ',re.sub(r'[^\w\s]',' ',text)).strip()
+
+def similar(a,b):
+    ka,kb=title_key(a),title_key(b)
+    if dice(bigrams(ka),bigrams(kb))<0.45: return False
+    na,nb=set(re.findall(r'\d+(?:[.,]\d+)?',ka)),set(re.findall(r'\d+(?:[.,]\d+)?',kb))
+    if na and nb and na!=nb: return False
+    for left,right in DIRECTION_PAIRS:
+        only_left=lambda k:left in k and right not in k
+        only_right=lambda k:right in k and left not in k
+        if (only_left(ka) and only_right(kb)) or (only_right(ka) and only_left(kb)): return False
+    return True
 
 def atomic_json(path,value):
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -86,47 +104,81 @@ def collect(target_date=None,progress=None):
     cache_path=DATA/'article-cache.json'
     try: cache=json.loads(cache_path.read_text(encoding='utf-8'))
     except (OSError,ValueError): cache={}
-    used=set();titles=set();gathered=0;hits=0
+    used=set();titles=set();gathered=0;hits=0;selected_all=[]
     for index,section in enumerate(sections,1):
         selected=[]
         url=f"https://news.naver.com/breakingnews/section/101/{section['id']}"
+        def examine(option):
+            """Cached or fresh inspection plus time-window checks; counts the exclusion and returns details or None."""
+            nonlocal hits
+            key=hashlib.sha256(option['url'].encode()).hexdigest()
+            cached=cache.get(key)
+            if cached and cached.get('inspector_version')==3 and 0<=now.timestamp()-cached['checked_epoch']<config['cache_minutes']*60:
+                details,reason=cached['details'],cached['reason'];hits+=1
+            else:
+                try:
+                    page=fetch(option['url'])
+                    details,reason=inspect_article(page,'naver',title_hint=option['title'],keywords=keywords)
+                    if details:
+                        logo=BeautifulSoup(page,'html.parser').select_one('.media_end_head_top_logo img[alt]')
+                        details['publisher']=logo.get('alt') if logo else '네이버 뉴스'
+                    cache[key]={'checked_epoch':now.timestamp(),'details':details,'reason':reason,'inspector_version':3}
+                except (OSError,ValueError):
+                    excluded['fetch_error']+=1;return None
+                time.sleep(.2)
+            if reason: excluded[reason]+=1;return None
+            if not valid_time(details.get('published_at'),now,config['max_age_hours']):
+                excluded['date_outside_window']+=1;return None
+            if target_date and published_date(details.get('published_at'))!=target_date:
+                excluded['date_outside_target']+=1;return None
+            return details
+        def verified_title(option,details):
+            """Dedupe by exact title; returns the title or None."""
+            title=details.get('title') or option['title']
+            fingerprint=re.sub(r'\W','',title).casefold()
+            if fingerprint in titles: excluded['duplicate']+=1;return None
+            titles.add(fingerprint);return title
+        def attach_related(option,details,title):
+            """Attach to the first similar leader; a similar story whose leaders are full is dropped, never a new card."""
+            for leader in selected_all:
+                if not similar(title,leader['title']): continue
+                used.add(option['url'])
+                if len(leader['related'])<RELATED_LIMIT:
+                    leader['related'].append({'url':option['url'],'title':title,'source':details.get('publisher','네이버 뉴스'),'published_at':details['published_at'],'section':section['name']})
+                    excluded['grouped']+=1
+                else: excluded['grouped_overflow']+=1
+                return True
+            return False
         try:
             options=candidates(fetch(url))[:section['candidate_limit']]
             if not options: raise ValueError('Section article list is empty')
             gathered+=len(options)
             # Preserve list order among equal scores; prefer user keywords.
             options.sort(key=lambda a:keyword_score(a['title'],rules),reverse=True)
+            remaining=[]
             for option in options:
                 if option['url'] in used: continue
-                key=hashlib.sha256(option['url'].encode()).hexdigest()
-                cached=cache.get(key)
-                if cached and cached.get('inspector_version')==2 and 0<=now.timestamp()-cached['checked_epoch']<config['cache_minutes']*60:
-                    details,reason=cached['details'],cached['reason'];hits+=1
-                else:
-                    try:
-                        page=fetch(option['url'])
-                        details,reason=inspect_article(page,'naver')
-                        if details:
-                            logo=BeautifulSoup(page,'html.parser').select_one('.media_end_head_top_logo img[alt]')
-                            details['publisher']=logo.get('alt') if logo else '네이버 뉴스'
-                        cache[key]={'checked_epoch':now.timestamp(),'details':details,'reason':reason,'inspector_version':2}
-                    except (OSError,ValueError):
-                        excluded['fetch_error']+=1;continue
-                    time.sleep(.2)
-                if reason: excluded[reason]+=1;continue
-                if not valid_time(details.get('published_at'),now,config['max_age_hours']):
-                    excluded['date_outside_window']+=1;continue
-                if target_date and published_date(details.get('published_at'))!=target_date:
-                    excluded['date_outside_target']+=1;continue
-                title=details.get('title') or option['title']
-                fingerprint=re.sub(r'\W','',title).casefold()
-                if fingerprint in titles: excluded['duplicate']+=1;continue
-                titles.add(fingerprint);used.add(option['url'])
-                selected.append({**option,**details,'title':title,'source_id':'naver','source':details.get('publisher','네이버 뉴스'),
-                                 'section_id':section['id'],'topic':section['name'],
-                                 'keyword_score':keyword_score(option['title'],rules),
-                                 'keyword_matches':[k for k in keywords if k.casefold() in title.casefold()]})
-                if len(selected)>=section['limit']: break
+                if len(selected)>=section['limit']: remaining.append(option);continue
+                details=examine(option)
+                if not details: continue
+                title=verified_title(option,details)
+                if not title or attach_related(option,details,title): continue
+                used.add(option['url'])
+                article={**option,**details,'title':title,'source_id':'naver','source':details.get('publisher','네이버 뉴스'),
+                         'section_id':section['id'],'topic':section['name'],
+                         'keyword_score':keyword_score(option['title'],rules),
+                         'keyword_matches':[k for k in keywords if k.casefold() in title.casefold()],'related':[]}
+                selected.append(article);selected_all.append(article)
+            # After the quota, only read candidates whose titles look like an already selected story.
+            extra=0
+            for option in remaining:
+                if extra>=EXTRA_FETCH_LIMIT: break
+                if option['url'] in used or not any(len(l['related'])<RELATED_LIMIT and similar(option['title'],l['title']) for l in selected_all): continue
+                extra+=1
+                details=examine(option)
+                if not details: continue
+                title=verified_title(option,details)
+                if title: attach_related(option,details,title)
             status.append({'id':section['id'],'name':section['name'],'status':'ok' if len(selected)>=section['minimum'] else 'shortfall','count':len(selected),'minimum':section['minimum'],'target':section['limit'], 'shortfall':max(0,section['minimum']-len(selected))})
         except (OSError,ValueError) as error:
             status.append({'id':section['id'],'name':section['name'],'status':'error','count':0,'message':str(error)[:120]})
@@ -138,7 +190,7 @@ def collect(target_date=None,progress=None):
     atomic_json(cache_path,cache)
     return {'schema_version':4,'date':report_date,'generated_at':datetime.now(KST).isoformat(timespec='seconds'),
             'timezone':'Asia/Seoul','keywords':keywords,'keyword_rules':rules,'topics':topics,'source_results':status,'excluded':dict(excluded),
-            'stats':{'selected':len(used),'collected':gathered,'topics':sum(bool(t['articles']) for t in topics),
+            'stats':{'selected':len(selected_all),'related':sum(len(a['related']) for a in selected_all),'collected':gathered,'topics':sum(bool(t['articles']) for t in topics),
                      'sources_ok':sum(s['status']=='ok' for s in status),'cache_hits':hits,'elapsed_seconds':round(time.monotonic()-started,1)},
             'notice':'네이버 경제 8개 섹션 | 발행일 확인 · 무료 기사 | 본문 핵심 문장 발췌'}
 

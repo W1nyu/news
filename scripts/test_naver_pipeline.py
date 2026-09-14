@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
-from naver_pipeline import ROOT, article_url, candidates, collect, valid_time, KST, collectable_dates, published_date, save_report
+from naver_pipeline import ROOT, article_url, candidates, collect, valid_time, KST, collectable_dates, published_date, save_report, similar
 
 class NaverPipelineTests(unittest.TestCase):
     def test_external_domain_rejected(self):
@@ -30,7 +30,7 @@ class NaverPipelineTests(unittest.TestCase):
                 sid=url.rsplit('/',1)[-1]
                 return '<div class="section_latest_article">'+''.join(f'<a class="sa_text_title" href="https://n.news.naver.com/mnews/article/999/{sid}{n}">검증용 경제 기사 제목 {sid} {n}</a>' for n in range(12))+'</div>'
             return '<div>'+url+'</div>'
-        def fake_inspect(page,source):
+        def fake_inspect(page,source,**kwargs):
             return {'title':page.removesuffix('</div>').rsplit('/',1)[-1], 'published_at':(datetime.now(KST)-timedelta(minutes=1)).isoformat(), 'summary':['검증용 핵심 문장입니다.'], 'access':'public_checked'},None
         with patch('naver_pipeline.fetch',side_effect=fake_fetch),patch('naver_pipeline.inspect_article',side_effect=fake_inspect),patch('naver_pipeline.atomic_json'),patch('naver_pipeline.time.sleep'):
             report=collect()
@@ -66,7 +66,7 @@ class NaverPipelineTests(unittest.TestCase):
         today_stamp=now-timedelta(minutes=1)
         if today_stamp.date()!=now.date(): today_stamp=now.replace(hour=0,minute=0,second=1,microsecond=0)
         yesterday_stamp=(now-timedelta(days=1)).replace(hour=12,minute=0,second=0,microsecond=0)
-        def fake_inspect(page,source):
+        def fake_inspect(page,source,**kwargs):
             n=int(page.removesuffix('</div>')[-1])
             stamp=today_stamp if n%2 else yesterday_stamp
             return {'title':page.removesuffix('</div>').rsplit('/',1)[-1],'published_at':stamp.isoformat(),'summary':['검증용 핵심 문장입니다.'],'access':'public_checked'},None
@@ -78,6 +78,58 @@ class NaverPipelineTests(unittest.TestCase):
         self.assertGreater(report['stats']['selected'],0)
         self.assertGreater(report['excluded'].get('date_outside_target',0),0)
         self.assertEqual(calls[0],(0,8,''));self.assertEqual(len(calls),9);self.assertEqual(calls[-1][0],8)
+
+    def test_similar_titles(self):
+        self.assertTrue(similar('삼성전자가 반도체 공장 증설 발표','삼성전자는 반도체 공장 증설 발표'))
+        self.assertTrue(similar('[단독] 삼성전자 반도체 공장 증설','삼성전자 반도체 공장 증설'))
+        self.assertFalse(similar('코스피 2% 상승 마감','코스피 3% 상승 마감'))
+        self.assertFalse(similar('코스피 2% 상승 마감','코스피 2% 하락 마감'))
+        self.assertFalse(similar('삼성전자 반도체 공장 증설','한국은행 기준금리 동결 결정'))
+
+    def _grouping_run(self,variants_for):
+        """variants_for(event_index) -> list of variant suffixes; returns (report, fetch mock)."""
+        events=['한국은행 기준금리 동결 결정','삼성전자 반도체 공장 증설 발표','서울 아파트 거래량 급감','원달러 환율 급등세 지속','정부 추경 편성 논의 착수','코스피 외국인 순매수 전환']
+        def titles(sid):
+            base=[f'{e} {sid}' for e in events]
+            extra=[f'{e} {sid}{suffix}' for i,e in enumerate(events) for suffix in variants_for(i)]
+            return base+extra
+        def fake_fetch(url):
+            if '/breakingnews/' in url:
+                sid=url.rsplit('/',1)[-1]
+                return '<div class="section_latest_article">'+''.join(f'<a class="sa_text_title" href="https://n.news.naver.com/mnews/article/999/{sid}{n:02d}">{t}</a>' for n,t in enumerate(titles(sid)))+'</div>'
+            return '<div>'+url+'</div>'
+        def fake_inspect(page,source,**kwargs):
+            return {'title':None,'published_at':(datetime.now(KST)-timedelta(minutes=1)).isoformat(),'summary':['검증용 핵심 문장입니다.'],'access':'public_checked'},None
+        # Neutral keyword rules keep Naver list order so the variants land after the quota.
+        with patch('naver_pipeline.fetch',side_effect=fake_fetch) as fetched,patch('naver_pipeline.inspect_article',side_effect=fake_inspect),patch('naver_pipeline.load_rules',return_value=[]),patch('naver_pipeline.atomic_json'),patch('naver_pipeline.time.sleep'):
+            return collect(),fetched
+
+    def test_similar_titles_group_as_related(self):
+        report,fetched=self._grouping_run(lambda i:[' 시장 반응'])
+        sections=json.loads((ROOT/'config/sections.json').read_text(encoding='utf-8'))['sections']
+        self.assertEqual([len(t['articles']) for t in report['topics']],[s['limit'] for s in sections])
+        first=report['topics'][0]['articles']
+        self.assertEqual(sum(len(a['related']) for a in first),6)
+        self.assertTrue(all(len(a['related'])==1 and a['related'][0]['section']=='금융' for a in first))
+        self.assertEqual(report['stats']['related'],sum(len(a['related']) for t in report['topics'] for a in t['articles']))
+        self.assertEqual(report['excluded']['grouped'],report['stats']['related'])
+        # 6 sections have limit 6 (1 list + 12 examine = 13 fetches each) and 2 have limit 3
+        # (1 list + 3 leaders + 3 matching extras = 7 fetches each): 6*13+2*7=92.
+        self.assertEqual(fetched.call_count,92)
+
+    def test_related_cap_per_card(self):
+        report,fetched=self._grouping_run(lambda i:[' 시장 반응',' 배경은',' 전망은',' 영향은',' 후속 조치',' 추가 발표'] if i==0 else [])
+        first=report['topics'][0]['articles']
+        self.assertEqual(len(first[0]['related']),4)
+        # 6 limit-6 sections: 1+6+4=11 fetches each; 2 limit-3 sections: 1+3+4=8 each: 6*11+2*8=82.
+        self.assertEqual(fetched.call_count,82)
+
+    def test_extra_fetch_limit_per_section(self):
+        report,fetched=self._grouping_run(lambda i:[' 시장 반응',' 배경은'] if i<5 else [])
+        first=report['topics'][0]['articles']
+        self.assertEqual(sum(len(a['related']) for a in first),8)
+        # 6 limit-6 sections: 1+6+8=15 fetches each; 2 limit-3 sections: 1+3+6=10 each: 6*15+2*10=110.
+        self.assertEqual(fetched.call_count,110)
 
     def test_save_report_survives_malformed_archive_file(self):
         def payload(date):
