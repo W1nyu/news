@@ -63,9 +63,12 @@ class NaverPipelineTests(unittest.TestCase):
                 sid=url.rsplit('/',1)[-1]
                 return '<div class="section_latest_article">'+''.join(f'<a class="sa_text_title" href="https://n.news.naver.com/mnews/article/999/{sid}{n}">검증용 경제 기사 제목 {sid} {n}</a>' for n in range(12))+'</div>'
             return '<div>'+url+'</div>'
+        today_stamp=now-timedelta(minutes=1)
+        if today_stamp.date()!=now.date(): today_stamp=now.replace(hour=0,minute=0,second=1,microsecond=0)
+        yesterday_stamp=(now-timedelta(days=1)).replace(hour=12,minute=0,second=0,microsecond=0)
         def fake_inspect(page,source):
             n=int(page.removesuffix('</div>')[-1])
-            stamp=(now-timedelta(minutes=1)) if n%2 else (now-timedelta(days=1))
+            stamp=today_stamp if n%2 else yesterday_stamp
             return {'title':page.removesuffix('</div>').rsplit('/',1)[-1],'published_at':stamp.isoformat(),'summary':['검증용 핵심 문장입니다.'],'access':'public_checked'},None
         calls=[]
         with patch('naver_pipeline.fetch',side_effect=fake_fetch),patch('naver_pipeline.inspect_article',side_effect=fake_inspect),patch('naver_pipeline.atomic_json'),patch('naver_pipeline.time.sleep'):
@@ -75,6 +78,18 @@ class NaverPipelineTests(unittest.TestCase):
         self.assertGreater(report['stats']['selected'],0)
         self.assertGreater(report['excluded'].get('date_outside_target',0),0)
         self.assertEqual(calls[0],(0,8,''));self.assertEqual(len(calls),9);self.assertEqual(calls[-1][0],8)
+
+    def test_save_report_survives_malformed_archive_file(self):
+        def payload(date):
+            return {'schema_version':4,'date':date,'generated_at':f'{date}T08:00:00+09:00','topics':[{'id':'259','name':'금융','articles':[{'url':f'https://n.news.naver.com/mnews/article/001/{date[-2:]}','title':f'{date} 기사','summary':['요약'],'published_at':f'{date}T07:00:00+09:00','source':'테스트','source_id':'naver'}]}],
+                    'stats':{'selected':1},'source_results':[],'excluded':{}}
+        with tempfile.TemporaryDirectory() as folder:
+            data=Path(folder)/'data';public=Path(folder)/'public'
+            data.mkdir(parents=True)
+            (data/'2026-09-10.json').write_text(json.dumps({'schema_version':4,'date':'2026-09-10'}),encoding='utf-8')
+            with patch('naver_pipeline.DATA',data),patch('naver_pipeline.PUBLIC',public):
+                save_report(payload('2026-09-13'))
+                self.assertEqual([h['date'] for h in json.loads((data/'history.json').read_text(encoding='utf-8'))],['2026-09-13'])
 
     def test_save_report_keeps_latest_date(self):
         def payload(date):

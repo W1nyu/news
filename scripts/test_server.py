@@ -14,6 +14,7 @@ class ServerTests(unittest.TestCase):
         self.assertIsNone(server.parse_collect_request(b'{}',allowed))
         self.assertIsNone(server.parse_collect_request(b'{"date":null}',allowed))
         self.assertEqual(server.parse_collect_request(b'{"date":"2026-09-12"}',allowed),'2026-09-12')
+        self.assertIsNone(server.parse_collect_request(b'{"date":"2026-09-14"}',allowed))
         for raw in (b'{"date":"2026-09-11"}',b'{"date":5}',b'[1]',b'not json',b'{"date":"2026-9-12"}'):
             with self.assertRaises(ValueError): server.parse_collect_request(raw,allowed)
 

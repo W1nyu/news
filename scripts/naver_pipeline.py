@@ -148,13 +148,14 @@ def save_report(payload):
         atomic_json(folder/f"{payload['date']}.json",payload)
     history=[];search=[];latest=None
     for path in sorted(DATA.glob('????-??-??.json'),reverse=True):
-        try: report=json.loads(path.read_text(encoding='utf-8'))
-        except (OSError,ValueError): continue
-        if report.get('schema_version')!=4: continue
+        try:
+            report=json.loads(path.read_text(encoding='utf-8'))
+            if report.get('schema_version')!=4: continue
+            entry={'date':report['date'],'selected':report['stats']['selected']}
+            rows=[{**a,'date':report['date'],'topic':topic['name']} for topic in report['topics'] for a in topic['articles']]
+        except (OSError,ValueError,KeyError,TypeError): continue
         if latest is None: latest=report
-        history.append({'date':report['date'],'selected':report['stats']['selected']})
-        for topic in report['topics']:
-            search.extend({**a,'date':report['date'],'topic':topic['name']} for a in topic['articles'])
+        history.append(entry);search.extend(rows)
     for folder in (DATA,PUBLIC):
         atomic_json(folder/'history.json',history)
         atomic_json(folder/'latest.json',latest or payload)

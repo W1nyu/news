@@ -34,7 +34,7 @@ def parse_collect_request(raw,allowed):
     date=body.get('date')
     if date is None: return None
     if not isinstance(date,str) or date not in allowed: raise ValueError(f"수집 가능한 날짜는 {', '.join(allowed)} 입니다.")
-    return date
+    return None if date==allowed[0] else date
 
 def run_collection(date):
     try:

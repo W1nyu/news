@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import tempfile
 import unittest
@@ -25,20 +27,24 @@ class CollectorTests(unittest.TestCase):
             collector.clear_progress()
 
     def test_main_returns_3_for_bad_date(self):
-        with patch('sys.argv',['collector.py','--date','2000-01-01']):
+        err=io.StringIO()
+        with patch('sys.argv',['collector.py','--date','2000-01-01']),contextlib.redirect_stderr(err):
             self.assertEqual(collector.main(),3)
+        self.assertIn('수집 가능한 날짜는',err.getvalue())
 
     def test_main_passes_date_and_clears_progress(self):
         allowed=collectable_dates()
+        out=io.StringIO()
         with tempfile.TemporaryDirectory() as folder,patch('collector.PROGRESS',Path(folder)/'progress.json'),\
              patch('sys.argv',['collector.py','--date',allowed[1]]),\
              patch('collector.collect',return_value={'date':allowed[1],'stats':{'selected':1},'source_results':[],'excluded':{}}) as fake,\
-             patch('collector.save_report') as saved,patch('collector.collection_lock'):
+             patch('collector.save_report') as saved,patch('collector.collection_lock'),contextlib.redirect_stdout(out):
             code=collector.main()
         self.assertEqual(code,0)
         self.assertEqual(fake.call_args.kwargs['target_date'],allowed[1])
         self.assertTrue(callable(fake.call_args.kwargs['progress']))
         saved.assert_called_once()
         self.assertFalse((Path(folder)/'progress.json').exists())
+        self.assertEqual(json.loads(out.getvalue())['date'],allowed[1])
 
 if __name__=='__main__': unittest.main()
