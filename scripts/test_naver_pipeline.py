@@ -87,6 +87,15 @@ class NaverPipelineTests(unittest.TestCase):
         self.assertFalse(similar('삼성전자 반도체 공장 증설','한국은행 기준금리 동결 결정'))
         self.assertTrue(similar('환율 1,400원 돌파','환율 1400원 돌파'))
         self.assertFalse(similar('환율 1,400원 돌파','환율 1,500원 돌파'))
+        self.assertFalse(similar('삼성전자 반도체 공장 증설 검토','삼성전자 반도체 공장 축소 검토'))
+        self.assertFalse(similar('증권사, 목표주가 상향 조정','증권사, 목표주가 하향 조정'))
+
+    def test_only_positive_keywords_feed_summary(self):
+        rules=[{'keyword':'반도체','weight':3},{'keyword':'실적','weight':-2},{'keyword':'AI','weight':0}]
+        page='<div class="section_latest_article"><a class="sa_text_title" href="https://n.news.naver.com/mnews/article/999/1">검증용 반도체 실적 기사 제목입니다</a></div>'
+        with patch('naver_pipeline.fetch',return_value=page),patch('naver_pipeline.load_rules',return_value=rules),patch('naver_pipeline.inspect_article',return_value=(None,'date_missing')) as inspected,patch('naver_pipeline.atomic_json'),patch('naver_pipeline.time.sleep'):
+            collect()
+        self.assertEqual(inspected.call_args.kwargs['keywords'],['반도체'])
 
     def _grouping_run(self,variants_for,variants_first=False,inspect_title=None):
         """variants_for(event_index) -> list of variant suffixes; returns (report, fetch mock).

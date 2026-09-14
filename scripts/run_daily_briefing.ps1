@@ -17,8 +17,25 @@ if ($IfMissing) {
 
 $python = Get-Command python -ErrorAction Stop
 
-& $python.Source (Join-Path $PSScriptRoot 'collector.py')
+# Keep a bounded log so scheduled runs can be diagnosed without Task Scheduler history.
+$logDir = Join-Path $projectRoot 'logs'
+$logFile = Join-Path $logDir 'collector.log'
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+if ((Test-Path -LiteralPath $logFile) -and (Get-Item -LiteralPath $logFile).Length -gt 1MB) {
+    Get-Content -LiteralPath $logFile -Tail 2000 | Set-Content -LiteralPath $logFile -Encoding UTF8
+}
+$stamp = Get-Date -Format 's'
+Add-Content -LiteralPath $logFile -Encoding UTF8 -Value "[$stamp] start $($MyInvocation.BoundParameters.Keys -join ',')"
+$previousPreference = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+& $python.Source (Join-Path $PSScriptRoot 'collector.py') 2>&1 | ForEach-Object {
+    $line = "$_"
+    Write-Host $line
+    Add-Content -LiteralPath $logFile -Encoding UTF8 -Value "[$stamp] $line"
+}
 $collectExit = $LASTEXITCODE
+$ErrorActionPreference = $previousPreference
+Add-Content -LiteralPath $logFile -Encoding UTF8 -Value "[$stamp] exit $collectExit"
 if ($collectExit -ne 0 -and -not ($Open -and $collectExit -eq 2)) {
     exit $collectExit
 }

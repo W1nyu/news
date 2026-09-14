@@ -26,7 +26,7 @@ CHECKPOINTS={
  '경제일반':'통계의 기준 기간과 정책의 시행일·적용 대상을 확인하세요.',
  '중기/벤처':'자금조달 규모와 사업화 계획, 지원 조건을 확인하세요.',
  '생활경제':'가격·소비 변화가 생활비에 미치는 영향을 확인하세요.'}
-DIRECTION_PAIRS=[('상승','하락'),('증가','감소'),('매수','매도'),('흑자','적자'),('인상','인하'),('확대','축소'),('급등','급락'),('강세','약세')]
+DIRECTION_PAIRS=[('상승','하락'),('증가','감소'),('매수','매도'),('흑자','적자'),('인상','인하'),('확대','축소'),('급등','급락'),('강세','약세'),('증설','축소'),('상향','하향'),('호조','부진'),('반등','하락')]
 RELATED_LIMIT=4
 EXTRA_FETCH_LIMIT=8
 
@@ -105,6 +105,8 @@ def collect(target_date=None,progress=None):
     config=json.loads((ROOT/'config/sections.json').read_text(encoding='utf-8'))
     rules=load_rules()
     keywords=[r['keyword'] for r in rules]
+    # Negative weights demote titles; they must not promote sentences inside a summary.
+    summary_keywords=[r['keyword'] for r in rules if r['weight']>0]
     now=datetime.now(KST);started=time.monotonic();excluded=Counter();status=[];topics=[]
     report_date=target_date or now.date().isoformat()
     sections=config['sections']
@@ -126,7 +128,7 @@ def collect(target_date=None,progress=None):
             else:
                 try:
                     page=fetch(option['url'])
-                    details,reason=inspect_article(page,'naver',title_hint=option['title'],keywords=keywords)
+                    details,reason=inspect_article(page,'naver',title_hint=option['title'],keywords=summary_keywords)
                     if details:
                         logo=BeautifulSoup(page,'html.parser').select_one('.media_end_head_top_logo img[alt]')
                         details['publisher']=logo.get('alt') if logo else '네이버 뉴스'
