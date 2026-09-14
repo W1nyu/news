@@ -16,7 +16,7 @@
 - `inspect_article(page, source_id, title_hint=None, keywords=())` — 두 인자를 추가한다. 기존 호출(인자 2개)은 그대로 동작한다.
 - 적격 문장 조건은 기존과 같다(25~220자, `?`로 끝나지 않음, 홍보·저작권·기자 서명 제외, `[앵커]` 접두 제거). 적격 문장 중 **앞 12개**만 후보로 본다.
 - `bigrams(text)`: 공백·기호를 제거한 문자열의 글자 2-gram 집합. `dice(a, b)`: `2|a∩b| / (|a|+|b|)`, 둘 다 비면 0.
-- 점수 `score(sentence, index)` = `dice(bigrams(sentence), bigrams(title))*3 + (키워드가 문장에 포함된 개수, 대소문자 무시)*1 + (숫자·%·원·억·조 포함 시 0.5) − index*0.05`. `title_hint`가 없으면 og:title, 그것도 없으면 Dice 항은 0.
+- 점수 `score(sentence, index)` = `dice(bigrams(sentence), bigrams(title))*3 + (키워드가 문장에 포함된 개수, 대소문자 무시)*1 + (숫자 또는 % 포함 시 0.5; 원·억·조는 숫자와 함께 나오므로 별도 검사하지 않음) − index*0.05`. `title_hint`가 없으면 og:title, 그것도 없으면 Dice 항은 0.
 - 선택: 후보 첫 문장(리드)은 항상 첫 번째. 두 번째는 나머지 후보를 점수 내림차순으로 보며 `dice(문장, 리드) < 0.6`이고 누적 70단어 이내인 첫 문장. 없으면 리드 1문장만.
 - 반환 `summary_method`는 `'제목 연관 발췌'`.
 
