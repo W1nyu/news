@@ -34,10 +34,18 @@ def title_key(title):
     text=re.sub(r'\[[^\]]*\]|\([^)]*\)|<[^>]*>',' ',str(title or ''))
     return re.sub(r'\s+',' ',re.sub(r'[^\w\s]',' ',text)).strip()
 
+def numbers(title):
+    """Number tokens from the raw title (brackets stripped, comma-grouping ignored)."""
+    text=re.sub(r'\[[^\]]*\]|\([^)]*\)|<[^>]*>','',str(title or ''))
+    return {token.replace(',','') for token in re.findall(r'\d+(?:[.,]\d+)?',text)}
+
+def fingerprint_of(title):
+    return re.sub(r'\W','',title).casefold()
+
 def similar(a,b):
     ka,kb=title_key(a),title_key(b)
     if dice(bigrams(ka),bigrams(kb))<0.45: return False
-    na,nb=set(re.findall(r'\d+(?:[.,]\d+)?',ka)),set(re.findall(r'\d+(?:[.,]\d+)?',kb))
+    na,nb=numbers(a),numbers(b)
     if na and nb and na!=nb: return False
     for left,right in DIRECTION_PAIRS:
         only_left=lambda k:left in k and right not in k
@@ -135,20 +143,21 @@ def collect(target_date=None,progress=None):
         def verified_title(option,details):
             """Dedupe by exact title; returns the title or None."""
             title=details.get('title') or option['title']
-            fingerprint=re.sub(r'\W','',title).casefold()
+            fingerprint=fingerprint_of(title)
             if fingerprint in titles: excluded['duplicate']+=1;return None
             titles.add(fingerprint);return title
         def attach_related(option,details,title):
-            """Attach to the first similar leader; a similar story whose leaders are full is dropped, never a new card."""
-            for leader in selected_all:
-                if not similar(title,leader['title']): continue
-                used.add(option['url'])
+            """Attach to the first similar leader with room; a similar story is dropped only once every similar leader is full, never a new card."""
+            similar_leaders=[leader for leader in selected_all if similar(title,leader['title'])]
+            if not similar_leaders: return False
+            used.add(option['url'])
+            for leader in similar_leaders:
                 if len(leader['related'])<RELATED_LIMIT:
                     leader['related'].append({'url':option['url'],'title':title,'source':details.get('publisher','네이버 뉴스'),'published_at':details['published_at'],'section':section['name']})
                     excluded['grouped']+=1
-                else: excluded['grouped_overflow']+=1
-                return True
-            return False
+                    return True
+            excluded['grouped_overflow']+=1
+            return True
         try:
             options=candidates(fetch(url))[:section['candidate_limit']]
             if not options: raise ValueError('Section article list is empty')
@@ -178,7 +187,8 @@ def collect(target_date=None,progress=None):
                 details=examine(option)
                 if not details: continue
                 title=verified_title(option,details)
-                if title: attach_related(option,details,title)
+                if title and not attach_related(option,details,title):
+                    titles.discard(fingerprint_of(title));excluded['ungrouped']+=1
             status.append({'id':section['id'],'name':section['name'],'status':'ok' if len(selected)>=section['minimum'] else 'shortfall','count':len(selected),'minimum':section['minimum'],'target':section['limit'], 'shortfall':max(0,section['minimum']-len(selected))})
         except (OSError,ValueError) as error:
             status.append({'id':section['id'],'name':section['name'],'status':'error','count':0,'message':str(error)[:120]})
@@ -192,7 +202,7 @@ def collect(target_date=None,progress=None):
             'timezone':'Asia/Seoul','keywords':keywords,'keyword_rules':rules,'topics':topics,'source_results':status,'excluded':dict(excluded),
             'stats':{'selected':len(selected_all),'related':sum(len(a['related']) for a in selected_all),'collected':gathered,'topics':sum(bool(t['articles']) for t in topics),
                      'sources_ok':sum(s['status']=='ok' for s in status),'cache_hits':hits,'elapsed_seconds':round(time.monotonic()-started,1)},
-            'notice':'네이버 경제 8개 섹션 | 발행일 확인 · 무료 기사 | 본문 핵심 문장 발췌'}
+            'notice':'네이버 경제 8개 섹션 | 발행일 확인 · 무료 기사 | 제목 연관 발췌'}
 
 def save_report(payload):
     payload.pop('pdf_url',None)

@@ -85,9 +85,12 @@ class NaverPipelineTests(unittest.TestCase):
         self.assertFalse(similar('코스피 2% 상승 마감','코스피 3% 상승 마감'))
         self.assertFalse(similar('코스피 2% 상승 마감','코스피 2% 하락 마감'))
         self.assertFalse(similar('삼성전자 반도체 공장 증설','한국은행 기준금리 동결 결정'))
+        self.assertTrue(similar('환율 1,400원 돌파','환율 1400원 돌파'))
+        self.assertFalse(similar('환율 1,400원 돌파','환율 1,500원 돌파'))
 
-    def _grouping_run(self,variants_for,variants_first=False):
-        """variants_for(event_index) -> list of variant suffixes; returns (report, fetch mock)."""
+    def _grouping_run(self,variants_for,variants_first=False,inspect_title=None):
+        """variants_for(event_index) -> list of variant suffixes; returns (report, fetch mock).
+        inspect_title(url) -> title override for the verified article, or None to fall back to the list title."""
         events=['한국은행 기준금리 동결 결정','삼성전자 반도체 공장 증설 발표','서울 아파트 거래량 급감','원달러 환율 급등세 지속','정부 추경 편성 논의 착수','코스피 외국인 순매수 전환']
         def titles(sid):
             base=[f'{e} {sid}' for e in events]
@@ -99,7 +102,8 @@ class NaverPipelineTests(unittest.TestCase):
                 return '<div class="section_latest_article">'+''.join(f'<a class="sa_text_title" href="https://n.news.naver.com/mnews/article/999/{sid}{n:02d}">{t}</a>' for n,t in enumerate(titles(sid)))+'</div>'
             return '<div>'+url+'</div>'
         def fake_inspect(page,source,**kwargs):
-            return {'title':None,'published_at':(datetime.now(KST)-timedelta(minutes=1)).isoformat(),'summary':['검증용 핵심 문장입니다.'],'access':'public_checked'},None
+            title=inspect_title(page.removeprefix('<div>').removesuffix('</div>')) if inspect_title else None
+            return {'title':title,'published_at':(datetime.now(KST)-timedelta(minutes=1)).isoformat(),'summary':['검증용 핵심 문장입니다.'],'access':'public_checked'},None
         # Neutral keyword rules keep Naver list order so the variants land after the quota.
         with patch('naver_pipeline.fetch',side_effect=fake_fetch) as fetched,patch('naver_pipeline.inspect_article',side_effect=fake_inspect),patch('naver_pipeline.load_rules',return_value=[]),patch('naver_pipeline.atomic_json'),patch('naver_pipeline.time.sleep'):
             return collect(),fetched
@@ -125,6 +129,18 @@ class NaverPipelineTests(unittest.TestCase):
         self.assertEqual(len(first[0]['related']),4)
         self.assertEqual(report['excluded']['grouped_overflow'],8)
         self.assertTrue(all(not similar(a['title'],first[0]['title']) for a in first[1:]))
+
+    def test_ungrouped_extra_fetch_frees_fingerprint_for_later_sections(self):
+        # One extra per section (event 0's variant) verifies to a completely different title
+        # that matches no leader; the drop must free its fingerprint so later sections
+        # (same variant text) are not wrongly rejected as duplicate.
+        def inspect_title(url):
+            index=int(url[-2:])
+            return f'완전히 다른 검증 제목 {url[-2:]}' if index>=6 else None
+        report,fetched=self._grouping_run(lambda i:[' 시장 반응'] if i==0 else [],inspect_title=inspect_title)
+        self.assertGreater(report['excluded']['ungrouped'],0)
+        self.assertEqual(report['stats']['related'],0)
+        self.assertEqual(report['excluded'].get('duplicate',0),0)
 
     def test_related_cap_per_card(self):
         report,fetched=self._grouping_run(lambda i:[' 시장 반응',' 배경은',' 전망은',' 영향은',' 후속 조치',' 추가 발표'] if i==0 else [])

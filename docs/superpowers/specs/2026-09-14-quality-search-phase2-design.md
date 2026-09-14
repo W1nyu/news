@@ -23,10 +23,10 @@
 ## 2. 유사 기사 묶기 (`scripts/naver_pipeline.py`)
 
 ### 판정
-- `title_key(title)`: `[...]`·`(...)`·`<...>` 블록과 기호를 제거하고 공백을 하나로 정리한 문자열. `title_bigrams(title)`는 그 2-gram 집합.
+- `title_key(title)`: `[...]`·`(...)`·`<...>` 블록과 기호를 제거하고 공백을 하나로 정리한 문자열. `bigrams(title_key(title))`는 그 2-gram 집합.
 - `DIRECTION_PAIRS = [('상승','하락'),('증가','감소'),('매수','매도'),('흑자','적자'),('인상','인하'),('확대','축소'),('급등','급락'),('강세','약세')]`
 - `similar(a, b)`(제목 문자열 두 개) → 모두 만족하면 참:
-  1. `dice(title_bigrams(a), title_bigrams(b)) >= 0.45`
+  1. `dice(bigrams(title_key(a)), bigrams(title_key(b))) >= 0.45`
   2. 각 제목의 숫자 토큰 집합(`re.findall(r'\d+(?:[.,]\d+)?', ...)`)이 같거나, 한쪽이 비어 있다.
   3. `DIRECTION_PAIRS`의 어느 쌍에서도 한 제목에는 왼쪽 단어만, 다른 제목에는 오른쪽 단어만 있는 경우가 없다.
 
