@@ -19,6 +19,36 @@ CHECKPOINTS = {
     '반도체·AI': '투자 발표가 실제 매출과 이익으로 연결되는 시점을 확인하세요.',
 }
 
+def bigrams(text):
+    compact = re.sub(r'[\W_]+', '', str(text or ''))
+    return {compact[i:i + 2] for i in range(len(compact) - 1)}
+
+def dice(a, b):
+    return 2 * len(a & b) / (len(a) + len(b)) if (a or b) else 0.0
+
+def pick_summary(sentences, title='', keywords=()):
+    """Lead sentence plus the sentence most related to the title, keywords and figures."""
+    candidates = [s for s in sentences[:12] if s]
+    if not candidates:
+        return []
+    title_set = bigrams(title)
+    def score(item):
+        index, sentence = item
+        lowered = sentence.casefold()
+        return (dice(bigrams(sentence), title_set) * 3
+                + sum(1 for k in keywords if k and k.casefold() in lowered)
+                + (0.5 if re.search(r'\d|%', sentence) else 0)
+                - index * 0.05)
+    lead = candidates[0]
+    summary = [lead]
+    budget = 70 - len(lead.split())
+    lead_set = bigrams(lead)
+    for _, sentence in sorted(enumerate(candidates[1:], 1), key=score, reverse=True):
+        if sentence != lead and dice(bigrams(sentence), lead_set) < 0.6 and len(sentence.split()) <= budget:
+            summary.append(sentence)
+            break
+    return summary
+
 def publication_date(soup):
     candidates = []
     for meta in soup.select('meta[property="article:published_time"], meta[name="pubdate"], meta[itemprop="datePublished"]'):
@@ -47,7 +77,7 @@ def publication_date(soup):
         except ValueError: continue
     return None, None
 
-def inspect_article(page, source_id):
+def inspect_article(page, source_id, title_hint=None, keywords=()):
     soup = BeautifulSoup(page, 'html.parser')
     # Machine-readable paid-access declarations take precedence over a teaser.
     if re.search(r'"isAccessibleForFree"\s*:\s*(?:false|"false")', page, re.I):
@@ -76,20 +106,17 @@ def inspect_article(page, source_id):
     # Select complete informative sentences, keeping quotations short.
     sentences = re.split(r'(?<=[.!?。])\s+', text)
     eligible = [s.strip() for s in sentences if 25 <= len(s.strip()) <= 220 and not s.strip().endswith('?') and not re.search(r'무단|재배포|저작권|기자\s*=|구독|ⓒ', s)]
-    summary = []
+    cleaned = []
     for sentence in eligible:
         sentence = re.sub(r'^.*?\[(?:\s*이코노미21[^\]]*|앵커)\]\s*', '', sentence)
-        if sentence in summary:
-            continue
-        if sum(len(s.split()) for s in summary) + len(sentence.split()) > 70:
-            continue
-        summary.append(sentence)
-        if len(summary) == 2:
-            break
+        if sentence and sentence not in cleaned:
+            cleaned.append(sentence)
+    title_text = title_hint or (title.get('content') if title else '') or ''
+    summary = pick_summary(cleaned, title_text, keywords)
     if not summary:
         return None, 'unverified'
     return {'title': title.get('content') if title else None,
             'published_at': published_value,
             'date_evidence': date_evidence,
-            'summary': summary, 'summary_method': '본문 핵심 문장 발췌',
+            'summary': summary, 'summary_method': '제목 연관 발췌',
             'access': 'public_checked'}, None
