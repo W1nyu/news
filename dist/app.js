@@ -21,7 +21,14 @@ function renderHeadlines(){
 function message(text,fraction){$('status').hidden=!text;$('status-text').textContent=text;$('progress').hidden=fraction==null;$('progress-bar').style.width=`${Math.round((fraction||0)*100)}%`;}
 function dateText(value){const d=new Date(value);return Number.isNaN(d.getTime())?'':new Intl.DateTimeFormat('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Seoul'}).format(d);}
 async function json(url){const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw new Error('load');return response.json();}
-function reportArticles(){return (state.report?.topics||[]).flatMap(t=>t.articles.map(a=>({...a,topic:t.name,date:state.report.date})));}
+function reportArticles(){return (state.report?.topics||[]).flatMap(t=>t.articles.map(a=>({...a,topic:t.name,date:a.date||state.report.date})));}
+const WEEK='week';
+function weekReport(){
+  const from=shiftDate(state.today||kstDate(Date.now()),-6);const seen=new Set();const rows=[];
+  [...state.index].sort((a,b)=>String(b.date).localeCompare(String(a.date))).forEach(a=>{if(a.date>=from&&!seen.has(a.url)){seen.add(a.url);rows.push(a);}});
+  const rank=(a,b)=>(b.keyword_score||0)-(a.keyword_score||0)||String(b.published_at||'').localeCompare(String(a.published_at||''));
+  return {schema_version:4,date:WEEK,from,generated_at:'',topics:SECTIONS.map(name=>({name,articles:rows.filter(a=>a.topic===name).sort(rank)}))};
+}
 const kstDate=value=>{const d=new Date(value);return Number.isNaN(d.getTime())?'':new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul'}).format(d);};
 function shiftDate(iso,days){const d=new Date(`${iso}T00:00:00Z`);d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
 function rangeBounds(){if(!state.query||state.range==='all')return null;if(state.range==='custom'){let from=state.from,to=state.to;if(!from&&!to)return null;if(from&&to&&from>to)[from,to]=[to,from];return {from,to};}const days=Number(state.range);return {from:shiftDate(state.today||kstDate(Date.now()),-(days-1)),to:''};}
@@ -34,7 +41,15 @@ function relatedList(a){const items=(Array.isArray(a.related)?a.related:[]).filt
 async function loadKeywords(){try{const data=await json('/api/keywords');state.keywords=(data.rules||[]).map(r=>r&&r.keyword).filter(k=>typeof k==='string'&&k);}catch{state.keywords=[];}render();}
 function card(a,extra=''){const saved=state.bookmarks.has(a.url);const keys=keywordsFor(a);return `<article class="card${state.read.has(a.url)?' read':''}" data-url="${esc(a.url)}"><div class="card-top"><span class="category">${esc(a.topic)}</span><button type="button" class="bookmark" data-bookmark="${esc(a.url)}" aria-pressed="${saved}" aria-label="${saved?'북마크 해제':'북마크'}">${saved?'★':'☆'}</button></div><h2><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${highlight(a.title,a.keyword_matches)}</a></h2>${(Array.isArray(a.summary)?a.summary:[]).map(s=>`<p>${highlight(s,keys)}</p>`).join('')}<div class="meta">${esc(a.source)} · ${esc(dateText(a.published_at))} 발행</div>${relatedList(a)}${extra}</article>`;}
 function renderBanner(){const show=Boolean(state.today)&&(state.latestDate||'')<state.today&&!state.running;$('missing-today').hidden=!show;if(show)$('missing-today-text').textContent=`오늘(${state.today.slice(5)}) 보고서가 아직 없습니다.${state.latestDate?` 최근 보고서는 ${state.latestDate.slice(5)}입니다.`:''}`;}
-function renderDates(){const dates=new Map(state.history.map(h=>[h.date,true]));state.collectable.forEach(d=>{if(!dates.has(d))dates.set(d,false);});const selected=$('date').value;$('date').innerHTML='<option value="">최신 보고서</option>'+[...dates].sort((a,b)=>b[0].localeCompare(a[0])).map(([d,has])=>`<option value="${esc(d)}"${has?'':' data-missing="1"'}>${esc(d)}${has?'':' (미수집)'}</option>`).join('');$('date').value=dates.has(selected)?selected:'';}
+function renderTrend(){
+  const today=state.today||kstDate(Date.now());if(!state.history.length){$('trend').hidden=true;return;}
+  const totals=new Map(state.history.map(h=>[h.date,h.selected]));const days=Array.from({length:14},(_,i)=>shiftDate(today,i-13));
+  const perSection=new Map();state.index.forEach(a=>{const key=a.date+'|'+a.topic;perSection.set(key,(perSection.get(key)||0)+1);});
+  const max=Math.max(1,...days.map(d=>totals.get(d)||0));
+  $('trend').innerHTML=days.map(d=>{const n=totals.get(d);if(n==null)return `<span class="none" title="${esc(d)} · 보고서 없음"></span>`;const parts=SECTIONS.map(s=>`${s} ${perSection.get(d+'|'+s)||0}`).join(', ');return `<span style="height:${Math.max(8,Math.round(n/max*100))}%" title="${esc(d)} · ${n}건 (${esc(parts)})"></span>`;}).join('');
+  $('trend').setAttribute('aria-label',`최근 14일 기사 수: ${days.map(d=>`${d.slice(5)} ${totals.get(d)??'없음'}`).join(', ')}`);$('trend').hidden=false;
+}
+function renderDates(){const dates=new Map(state.history.map(h=>[h.date,true]));state.collectable.forEach(d=>{if(!dates.has(d))dates.set(d,false);});const selected=$('date').value;$('date').innerHTML='<option value="">최신 보고서</option><option value="week">최근 7일 모아보기</option>'+[...dates].sort((a,b)=>b[0].localeCompare(a[0])).map(([d,has])=>`<option value="${esc(d)}"${has?'':' data-missing="1"'}>${esc(d)}${has?'':' (미수집)'}</option>`).join('');$('date').value=dates.has(selected)||selected===WEEK?selected:'';}
 function render(){
   $('categories').innerHTML=['전체',...SECTIONS,SAVED].map(s=>`<button type="button" data-category="${esc(s)}" aria-pressed="${state.category===s}">${esc(s)}${s===SAVED?` (${state.bookmarks.size})`:''}</button>`).join('');
   renderHeadlines();
@@ -46,10 +61,10 @@ function render(){
   const bounds=rangeBounds();if(bounds)articles=articles.filter(a=>inRange(a,bounds));
   if(state.query)articles=articles.filter(a=>searchText(a).includes(state.query));
   $('range').disabled=!state.query;$('range-custom').hidden=!(state.query&&state.range==='custom');
-  const showDate=Boolean(state.query)||saved;
+  const week=state.report?.date===WEEK;const showDate=Boolean(state.query)||saved||week;
   $('articles').innerHTML=articles.length?articles.slice(0,state.limit).map(a=>card(a,showDate?`<button class="open-report" data-date="${esc(a.date)}">${esc(a.date)} 보고서 보기</button>`:'')).join(''):`<p class="empty">${saved?'저장한 뉴스가 없습니다. 카드의 ☆를 눌러 저장하세요.':'조건에 맞는 뉴스가 없습니다.'}</p>`;
   $('more').hidden=articles.length<=state.limit;
-  $('updated').textContent=state.report?`${state.report.date} · ${dateText(state.report.generated_at)} 갱신`:'';
+  $('updated').textContent=!state.report?'':week?`${state.report.from} ~ ${state.today||''} · ${reportArticles().length}건`:`${state.report.date} · ${dateText(state.report.generated_at)} 갱신`;
   renderBanner();
 }
 async function loadReport(date=''){
@@ -59,11 +74,11 @@ async function loadReport(date=''){
   render();
 }
 async function loadArchive(){
-  try{const [history,index]=await Promise.all([json('data/history.json'),json('data/search.json')]);state.history=history;state.index=index.filter(a=>a.source_id==='naver'&&SECTIONS.includes(a.topic));renderDates();render();}
+  try{const [history,index]=await Promise.all([json('data/history.json'),json('data/search.json')]);state.history=history;state.index=index.filter(a=>a.source_id==='naver'&&SECTIONS.includes(a.topic));renderDates();renderTrend();if(state.report?.date===WEEK)state.report=weekReport();render();}
   catch{message('보관함 검색을 불러오지 못했습니다. 새로고침해 주세요.');}
 }
 function setCollectButtons(disabled){document.querySelectorAll('[data-collect]').forEach(b=>{b.disabled=disabled;});}
-$('date').onchange=()=>{state.query='';$('search').value='';state.limit=18;const option=$('date').selectedOptions[0];if(option&&option.dataset.missing){state.missingDate=$('date').value;render();return;}loadReport($('date').value);};
+$('date').onchange=()=>{state.query='';$('search').value='';state.limit=18;const option=$('date').selectedOptions[0];if(option&&option.dataset.missing){state.missingDate=$('date').value;render();return;}if($('date').value===WEEK){state.request++;state.missingDate='';state.report=weekReport();message('');render();return;}loadReport($('date').value);};
 $('search').oninput=()=>{state.query=$('search').value.trim().toLocaleLowerCase();state.limit=18;if(state.query&&state.missingDate){state.missingDate='';$('date').value='';}render();};
 $('categories').onclick=e=>{if(e.target.dataset.category){state.category=e.target.dataset.category;state.limit=18;render();}};
 $('articles').onclick=e=>{
@@ -88,7 +103,7 @@ async function poll(){
     if(state.awaiting){state.awaiting=false;
       if(status.ok){const date=status.date||'';state.missingDate='';$('date').value=date;state.limit=18;await loadArchive();$('date').value=date;await loadReport(date);message('새 보고서가 준비됐습니다.');}
       else message(status.message);}
-    renderDates();renderBanner();
+    renderDates();renderTrend();renderBanner();
   }catch{if(state.awaiting&&++state.pollFailures<10){message('수집 상태를 다시 확인하는 중…');setTimeout(poll,2000);return;}state.awaiting=false;state.pollFailures=0;setCollectButtons(false);message('수집 상태 확인에 실패했습니다. 잠시 후 새로고침해 주세요.');}
 }
 async function startCollect(date){
