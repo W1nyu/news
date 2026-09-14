@@ -22,7 +22,7 @@
 - 캐시 `inspector_version`을 3으로 올린다(요약 방식 변경).
 - localStorage 키·형식은 1차와 같고 북마크 객체에 `related`, `keywords`를 더한다.
 - 테스트: `python -m unittest discover -s scripts -p "test_*.py"` (루트에서), `node --check dist/app.js`. 출력은 깨끗해야 한다.
-- 실제 수집(`python scripts/collector.py`)은 Task 7에서만 1회 실행한다.
+- 실제 수집(`python scripts/collector.py`)은 Task 6에서만 1회 실행한다.
 - git: 각 Task 끝에 커밋.
 
 ---
