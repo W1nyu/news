@@ -86,13 +86,13 @@ class NaverPipelineTests(unittest.TestCase):
         self.assertFalse(similar('코스피 2% 상승 마감','코스피 2% 하락 마감'))
         self.assertFalse(similar('삼성전자 반도체 공장 증설','한국은행 기준금리 동결 결정'))
 
-    def _grouping_run(self,variants_for):
+    def _grouping_run(self,variants_for,variants_first=False):
         """variants_for(event_index) -> list of variant suffixes; returns (report, fetch mock)."""
         events=['한국은행 기준금리 동결 결정','삼성전자 반도체 공장 증설 발표','서울 아파트 거래량 급감','원달러 환율 급등세 지속','정부 추경 편성 논의 착수','코스피 외국인 순매수 전환']
         def titles(sid):
             base=[f'{e} {sid}' for e in events]
             extra=[f'{e} {sid}{suffix}' for i,e in enumerate(events) for suffix in variants_for(i)]
-            return base+extra
+            return extra+base if variants_first else base+extra
         def fake_fetch(url):
             if '/breakingnews/' in url:
                 sid=url.rsplit('/',1)[-1]
@@ -116,6 +116,15 @@ class NaverPipelineTests(unittest.TestCase):
         # 6 sections have limit 6 (1 list + 12 examine = 13 fetches each) and 2 have limit 3
         # (1 list + 3 leaders + 3 matching extras = 7 fetches each): 6*13+2*7=92.
         self.assertEqual(fetched.call_count,92)
+
+    def test_similar_story_with_full_leader_is_dropped_not_selected(self):
+        # Five variants of event 0 arrive first: the first becomes the card, four attach, then the original event-0 story overflows and never becomes a card.
+        report,fetched=self._grouping_run(lambda i:[' 시장 반응',' 배경은',' 전망은',' 영향은',' 후속 조치'] if i==0 else [],variants_first=True)
+        first=report['topics'][0]['articles']
+        self.assertEqual(len(first),6)
+        self.assertEqual(len(first[0]['related']),4)
+        self.assertEqual(report['excluded']['grouped_overflow'],8)
+        self.assertTrue(all(not similar(a['title'],first[0]['title']) for a in first[1:]))
 
     def test_related_cap_per_card(self):
         report,fetched=self._grouping_run(lambda i:[' 시장 반응',' 배경은',' 전망은',' 영향은',' 후속 조치',' 추가 발표'] if i==0 else [])
