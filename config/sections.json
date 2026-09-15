@@ -2,13 +2,13 @@
   "max_age_hours": 72,
   "cache_minutes": 30,
   "sections": [
-    {"id":"259", "name":"금융", "minimum":3, "limit":6, "candidate_limit":60},
-    {"id":"258", "name":"증권", "minimum":3, "limit":6, "candidate_limit":60},
-    {"id":"261", "name":"산업/재계", "minimum":3, "limit":6, "candidate_limit":60},
-    {"id":"260", "name":"부동산", "minimum":3, "limit":6, "candidate_limit":60},
-    {"id":"262", "name":"글로벌 경제", "minimum":3, "limit":6, "candidate_limit":60},
-    {"id":"263", "name":"경제일반", "minimum":3, "limit":6, "candidate_limit":60},
-    {"id":"771", "name":"중기/벤처", "minimum":3, "limit":3, "candidate_limit":40},
-    {"id":"310", "name":"생활경제", "minimum":3, "limit":3, "candidate_limit":40}
+    {"id":"259", "name":"금융", "minimum":3, "limit":9, "candidate_limit":60},
+    {"id":"258", "name":"증권", "minimum":3, "limit":9, "candidate_limit":60},
+    {"id":"261", "name":"산업/재계", "minimum":3, "limit":9, "candidate_limit":60},
+    {"id":"260", "name":"부동산", "minimum":3, "limit":9, "candidate_limit":60},
+    {"id":"262", "name":"글로벌 경제", "minimum":3, "limit":9, "candidate_limit":60},
+    {"id":"263", "name":"경제일반", "minimum":3, "limit":9, "candidate_limit":60},
+    {"id":"771", "name":"중기/벤처", "minimum":3, "limit":9, "candidate_limit":60},
+    {"id":"310", "name":"생활경제", "minimum":3, "limit":9, "candidate_limit":60}
   ]
 }

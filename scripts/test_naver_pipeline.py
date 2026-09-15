@@ -35,7 +35,7 @@ class NaverPipelineTests(unittest.TestCase):
         with patch('naver_pipeline.fetch',side_effect=fake_fetch),patch('naver_pipeline.inspect_article',side_effect=fake_inspect),patch('naver_pipeline.atomic_json'),patch('naver_pipeline.time.sleep'):
             report=collect()
         self.assertEqual(len(report['topics']),8)
-        self.assertEqual(report['stats']['selected'],42)
+        self.assertEqual(report['stats']['selected'],72)
         self.assertEqual([len(t['articles']) for t in report['topics']],[s['limit'] for s in sections])
         self.assertTrue(all(a['source_id']=='naver' for t in report['topics'] for a in t['articles']))
 
@@ -113,14 +113,20 @@ class NaverPipelineTests(unittest.TestCase):
         def fake_inspect(page,source,**kwargs):
             title=inspect_title(page.removeprefix('<div>').removesuffix('</div>')) if inspect_title else None
             return {'title':title,'published_at':(datetime.now(KST)-timedelta(minutes=1)).isoformat(),'summary':['검증용 핵심 문장입니다.'],'access':'public_checked'},None
-        # Neutral keyword rules keep Naver list order so the variants land after the quota.
-        with patch('naver_pipeline.fetch',side_effect=fake_fetch) as fetched,patch('naver_pipeline.inspect_article',side_effect=fake_inspect),patch('naver_pipeline.load_rules',return_value=[]),patch('naver_pipeline.atomic_json'),patch('naver_pipeline.time.sleep'):
+        # Fixed limits (6 main sections x6, 2 sections x3) keep the fetch arithmetic below stable
+        # regardless of config/sections.json; neutral keyword rules keep Naver list order so the variants land after the quota.
+        config=json.loads((ROOT/'config/sections.json').read_text(encoding='utf-8'))
+        for i,section in enumerate(config['sections']):
+            section.update({'minimum':3,'limit':6 if i<6 else 3,'candidate_limit':60})
+        real_read_text=Path.read_text
+        def read_text(self,*args,**kwargs):
+            return json.dumps(config) if self.name=='sections.json' else real_read_text(self,*args,**kwargs)
+        with patch('naver_pipeline.fetch',side_effect=fake_fetch) as fetched,patch('naver_pipeline.inspect_article',side_effect=fake_inspect),patch('naver_pipeline.load_rules',return_value=[]),patch('naver_pipeline.atomic_json'),patch('naver_pipeline.time.sleep'),patch.object(Path,'read_text',read_text):
             return collect(),fetched
 
     def test_similar_titles_group_as_related(self):
         report,fetched=self._grouping_run(lambda i:[' 시장 반응'])
-        sections=json.loads((ROOT/'config/sections.json').read_text(encoding='utf-8'))['sections']
-        self.assertEqual([len(t['articles']) for t in report['topics']],[s['limit'] for s in sections])
+        self.assertEqual([len(t['articles']) for t in report['topics']],[6]*6+[3]*2)
         first=report['topics'][0]['articles']
         self.assertEqual(sum(len(a['related']) for a in first),6)
         self.assertTrue(all(len(a['related'])==1 and a['related'][0]['section']=='금융' for a in first))
