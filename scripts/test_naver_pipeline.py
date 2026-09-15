@@ -88,6 +88,12 @@ class NaverPipelineTests(unittest.TestCase):
         self.assertTrue(similar('환율 1,400원 돌파','환율 1400원 돌파'))
         self.assertFalse(similar('환율 1,400원 돌파','환율 1,500원 돌파'))
         self.assertFalse(similar('삼성전자 반도체 공장 증설 검토','삼성전자 반도체 공장 축소 검토'))
+
+    def test_similar_tolerates_incidental_and_rounded_numbers(self):
+        self.assertTrue(similar('주담대 변동금리 5개월 만에 상승세 멈춰…8월 코픽스 연 3.18%(종합)','주담대 변동금리 숨 고르나…8월 코픽스 연 3.18%'))
+        self.assertTrue(similar('美 10년물 국채금리 5% 재돌파…2007년 이후 최고치','2007년 이후 처음 있는 일…美 10년물 국채금리 5.03% 폭등'))
+        self.assertFalse(similar('美 10년물 국채금리 5% 재돌파…2007년 이후 최고치','美 10년물 국채금리 4.5% 재돌파…2007년 이후 최고치'))
+        self.assertFalse(similar('코스피 2.5% 상승 마감','코스피 2.8% 상승 마감'))
         self.assertFalse(similar('증권사, 목표주가 상향 조정','증권사, 목표주가 하향 조정'))
 
     def test_only_positive_keywords_feed_summary(self):

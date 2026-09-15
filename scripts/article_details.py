@@ -109,6 +109,7 @@ def inspect_article(page, source_id, title_hint=None, keywords=()):
     cleaned = []
     for sentence in eligible:
         sentence = re.sub(r'^.*?\[(?:\s*이코노미21[^\]]*|앵커)\]\s*', '', sentence)
+        sentence = re.sub(r'^\[[^\]]{0,30}기자\]\s*', '', sentence)
         if sentence and sentence not in cleaned:
             cleaned.append(sentence)
     title_text = title_hint or (title.get('content') if title else '') or ''

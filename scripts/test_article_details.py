@@ -57,6 +57,12 @@ class ArticleTests(unittest.TestCase):
         self.assertEqual(article['summary'],[LEAD,RELATED])
         self.assertEqual(article['summary_method'],'제목 연관 발췌')
 
+    def test_byline_prefix_stripped_from_lead(self):
+        body=' '.join(['[이데일리 최정훈 기자] '+LEAD,*FILLERS,RELATED])
+        article,reason=inspect_article(META+'<div id="dic_area">'+body+'</div>','naver')
+        self.assertIsNone(reason)
+        self.assertEqual(article['summary'][0],LEAD)
+
     def test_keyword_bonus_without_title(self):
         keyworded='금리 인상 여부가 시장의 최대 관심사로 떠오르고 있다는 분석이 나온다.'
         self.assertEqual(pick_summary([LEAD,FILLERS[0],keyworded],'',('금리',)),[LEAD,keyworded])

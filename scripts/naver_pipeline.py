@@ -42,11 +42,20 @@ def numbers(title):
 def fingerprint_of(title):
     return re.sub(r'\W','',title).casefold()
 
+def numbers_agree(x,y):
+    """A rounded figure matches its precise one (5 vs 5.03), but 2.5 vs 2.8 or 2 vs 3 do not."""
+    if x==y: return True
+    return ('.' not in x and x==y.split('.')[0]) or ('.' not in y and y==x.split('.')[0])
+
+def numbers_compatible(na,nb):
+    """Every number of the shorter title has a match in the longer one; extras like '5개월 만에' are incidental."""
+    small,large=sorted((na,nb),key=len)
+    return all(any(numbers_agree(x,y) for y in large) for x in small)
+
 def similar(a,b):
     ka,kb=title_key(a),title_key(b)
     if dice(bigrams(ka),bigrams(kb))<0.45: return False
-    na,nb=numbers(a),numbers(b)
-    if na and nb and na!=nb: return False
+    if not numbers_compatible(numbers(a),numbers(b)): return False
     for left,right in DIRECTION_PAIRS:
         only_left=lambda k:left in k and right not in k
         only_right=lambda k:right in k and left not in k
