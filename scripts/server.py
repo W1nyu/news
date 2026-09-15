@@ -63,7 +63,7 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path=='/api/status': return self.send_json(200,status_payload())
         if self.path=='/api/keywords': return self.send_json(200,{'rules':load_rules()})
         if urlparse(self.path).path in ('/','/index.html'):
-            version=hashlib.sha256((ROOT/'dist/app.js').read_bytes()+(ROOT/'dist/minimal.css').read_bytes()).hexdigest()[:12]
+            version=hashlib.sha256((ROOT/'dist/app.js').read_bytes()+(ROOT/'dist/tokens.css').read_bytes()+(ROOT/'dist/app.css').read_bytes()).hexdigest()[:12]
             body=(ROOT/'dist/index.html').read_text(encoding='utf-8').replace('__ASSET_VERSION__',version).encode('utf-8')
             self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body);return
         return super().do_GET()
