@@ -91,6 +91,11 @@ header {
 .actions .text-button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 .actions #collect { height: 38px; padding-inline: var(--seed-dimension-x3); }
 
+/* 테마 버튼: 현재 모드의 아이콘만 표시 */
+#theme svg { display: none; }
+#theme[data-theme-mode="system"] .theme-system, #theme[data-theme-mode="light"] .theme-light, #theme[data-theme-mode="dark"] .theme-dark { display: block; }
+#theme { width: 44px; padding: 0; }
+
 /* ── 제목 행 ───────────────────────────────────────── */
 .title-row { display: flex; flex-direction: column; gap: var(--seed-dimension-x3); padding: var(--seed-dimension-x6) 0 var(--seed-dimension-x4); }
 .eyebrow { margin: 0 0 var(--seed-dimension-x1); font-size: var(--seed-font-size-t2); line-height: var(--seed-line-height-t2); font-weight: var(--seed-font-weight-medium); letter-spacing: .08em; color: var(--seed-color-fg-brand); }

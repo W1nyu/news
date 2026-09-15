@@ -1,73 +1,79 @@
 /* 디자인 토큰 — 당근 SEED Design v2.7 (packages/css/base.css)에서 쓰는 값만 발췌.
    브랜드 색은 SEED carrot 대신 아침 경제 딥그린으로 바꿨다(--seed-color-*-brand-*).
-   breakpoint(SEED): sm 480 / md 768 / lg 1280 / xl 1440 — app.css의 min-width 쿼리와 맞춘다. */
+   breakpoint(SEED): sm 480 / md 768 / lg 1280 / xl 1440 — app.css의 min-width 쿼리와 맞춘다.
+   라이트/다크 값은 light-dark()로 한 번에 정의하고, <html data-theme="light|dark">가 color-scheme을 고정해 테마를 강제한다(없으면 시스템 설정). */
+:root { color-scheme: light dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 :root {
-  color-scheme: light dark;
-
-  /* 팔레트 · 라이트 */
-  --seed-color-palette-gray-00: #fff;
-  --seed-color-palette-gray-100: #f7f8f9;
-  --seed-color-palette-gray-200: #f3f4f5;
-  --seed-color-palette-gray-300: #eeeff1;
-  --seed-color-palette-gray-400: #dcdee3;
-  --seed-color-palette-gray-500: #d1d3d8;
-  --seed-color-palette-gray-600: #b0b3ba;
-  --seed-color-palette-gray-700: #868b94;
-  --seed-color-palette-gray-800: #555d6d;
-  --seed-color-palette-gray-900: #2a3038;
-  --seed-color-palette-gray-1000: #1a1c20;
+  /* 팔레트 */
+  --seed-color-palette-gray-00: light-dark(#fff, #000);
+  --seed-color-palette-gray-100: light-dark(#f7f8f9, #16171b);
+  --seed-color-palette-gray-200: light-dark(#f3f4f5, #1d2025);
+  --seed-color-palette-gray-300: light-dark(#eeeff1, #2b2e35);
+  --seed-color-palette-gray-400: light-dark(#dcdee3, #393d46);
+  --seed-color-palette-gray-500: light-dark(#d1d3d8, #5b606a);
+  --seed-color-palette-gray-600: light-dark(#b0b3ba, #868b94);
+  --seed-color-palette-gray-700: light-dark(#868b94, #b0b3ba);
+  --seed-color-palette-gray-800: light-dark(#555d6d, #dcdee3);
+  --seed-color-palette-gray-900: light-dark(#2a3038, #e9eaec);
+  --seed-color-palette-gray-1000: light-dark(#1a1c20, #f3f4f5);
   --seed-color-palette-static-black-alpha-200: #0000000c;
   --seed-color-palette-static-black-alpha-300: #00000010;
   --seed-color-palette-static-black-alpha-700: #00000074;
-  --seed-color-palette-blue-100: #eff6ff;
-  --seed-color-palette-blue-600: #5e98fe;
-  --seed-color-palette-blue-700: #217cf9;
-  --seed-color-palette-yellow-100: #fff7de;
-  --seed-color-palette-yellow-300: #fbdc65;
-  --seed-color-palette-yellow-900: #4f3e1f;
+  --seed-color-palette-static-white-alpha-50: #ffffff0d;
+  --seed-color-palette-static-white-alpha-100: #ffffff17;
+  --seed-color-palette-static-white-alpha-200: #ffffff20;
+  --seed-color-palette-static-white-alpha-300: #ffffff2e;
+  --seed-color-palette-blue-100: light-dark(#eff6ff, #202742);
+  --seed-color-palette-blue-600: light-dark(#5e98fe, #1e82eb);
+  --seed-color-palette-blue-700: light-dark(#217cf9, #41a2f9);
+  --seed-color-palette-yellow-100: light-dark(#fff7de, #302819);
+  --seed-color-palette-yellow-300: light-dark(#fbdc65, #543e15);
+  --seed-color-palette-yellow-900: light-dark(#4f3e1f, #e5d49b);
 
-  /* 시맨틱 · 라이트 */
+  /* 시맨틱 */
   --seed-color-fg-neutral: var(--seed-color-palette-gray-1000);
   --seed-color-fg-neutral-muted: var(--seed-color-palette-gray-800);
   --seed-color-fg-neutral-subtle: var(--seed-color-palette-gray-700);
-  --seed-color-fg-neutral-inverted: var(--seed-color-palette-gray-00);
+  --seed-color-fg-neutral-inverted: light-dark(var(--seed-color-palette-gray-00), var(--seed-color-palette-gray-100));
   --seed-color-fg-placeholder: var(--seed-color-palette-gray-600);
   --seed-color-fg-disabled: var(--seed-color-palette-gray-500);
   --seed-color-fg-informative: var(--seed-color-palette-blue-700);
   --seed-color-fg-warning-contrast: var(--seed-color-palette-yellow-900);
-  --seed-color-bg-layer-basement: var(--seed-color-palette-gray-200);
-  --seed-color-bg-layer-default: var(--seed-color-palette-gray-00);
-  --seed-color-bg-layer-fill: var(--seed-color-palette-gray-100);
-  --seed-color-bg-layer-floating: var(--seed-color-palette-gray-00);
-  --seed-color-bg-neutral-weak: var(--seed-color-palette-gray-200);
-  --seed-color-bg-neutral-weak-alpha: var(--seed-color-palette-static-black-alpha-200);
-  --seed-color-bg-neutral-weak-alpha-pressed: var(--seed-color-palette-static-black-alpha-300);
+  --seed-color-bg-layer-basement: light-dark(var(--seed-color-palette-gray-200), var(--seed-color-palette-gray-00));
+  --seed-color-bg-layer-default: light-dark(var(--seed-color-palette-gray-00), var(--seed-color-palette-gray-100));
+  --seed-color-bg-layer-fill: light-dark(var(--seed-color-palette-gray-100), var(--seed-color-palette-gray-200));
+  --seed-color-bg-layer-floating: light-dark(var(--seed-color-palette-gray-00), var(--seed-color-palette-gray-200));
+  --seed-color-bg-neutral-weak: light-dark(var(--seed-color-palette-gray-200), var(--seed-color-palette-gray-300));
+  --seed-color-bg-neutral-weak-alpha: light-dark(var(--seed-color-palette-static-black-alpha-200), var(--seed-color-palette-static-white-alpha-200));
+  --seed-color-bg-neutral-weak-alpha-pressed: light-dark(var(--seed-color-palette-static-black-alpha-300), var(--seed-color-palette-static-white-alpha-300));
   --seed-color-bg-overlay: var(--seed-color-palette-static-black-alpha-700);
   --seed-color-bg-informative-weak: var(--seed-color-palette-blue-100);
   --seed-color-bg-warning-weak: var(--seed-color-palette-yellow-100);
-  --seed-color-stroke-neutral-subtle: var(--seed-color-palette-static-black-alpha-200);
-  --seed-color-stroke-neutral-muted: var(--seed-color-palette-static-black-alpha-300);
+  --seed-color-stroke-neutral-subtle: light-dark(var(--seed-color-palette-static-black-alpha-200), var(--seed-color-palette-static-white-alpha-50));
+  --seed-color-stroke-neutral-muted: light-dark(var(--seed-color-palette-static-black-alpha-300), var(--seed-color-palette-static-white-alpha-100));
   --seed-color-stroke-neutral-weak: var(--seed-color-palette-gray-400);
   --seed-color-stroke-warning-weak: var(--seed-color-palette-yellow-300);
   --seed-color-stroke-focus-ring: var(--seed-color-palette-blue-600);
 
   /* 브랜드 · 딥그린 (SEED carrot 대체) */
-  --seed-color-bg-brand-solid: #1b5344;
-  --seed-color-bg-brand-solid-pressed: #143d33;
-  --seed-color-bg-brand-weak: #e8f1ec;
-  --seed-color-bg-brand-weak-pressed: #d6e5db;
-  --seed-color-fg-brand: #24704f;
-  --seed-color-fg-brand-contrast: #1b5344;
-  --seed-color-stroke-brand-solid: #1b5344;
-  --seed-color-stroke-brand-weak: #9eb7a2;
-  --brief-mark: #eef5c8;
-  --brief-mark-soft: #f3f7dc;
-  --brief-star: #c98a12;
+  --seed-color-bg-brand-solid: light-dark(#1b5344, #2f8a6b);
+  --seed-color-bg-brand-solid-pressed: light-dark(#143d33, #3a9c7b);
+  --seed-color-bg-brand-weak: light-dark(#e8f1ec, #1a2f27);
+  --seed-color-bg-brand-weak-pressed: light-dark(#d6e5db, #22392f);
+  --seed-color-fg-brand: light-dark(#24704f, #6fcfa8);
+  --seed-color-fg-brand-contrast: light-dark(#1b5344, #8fdcbd);
+  --seed-color-stroke-brand-solid: light-dark(#1b5344, #2f8a6b);
+  --seed-color-stroke-brand-weak: light-dark(#9eb7a2, #2b4a3d);
+  --brief-mark: light-dark(#eef5c8, #3d4a1e);
+  --brief-mark-soft: light-dark(#f3f7dc, #2e3a1a);
+  --brief-star: light-dark(#c98a12, #e0a83a);
 
   /* 그림자 */
-  --seed-shadow-s1: 0 1px 4px 0 #00000014;
-  --seed-shadow-s2: 0 2px 10px 0 #0000001a;
-  --seed-shadow-s3: 0 4px 16px 0 #0000001f;
+  --seed-shadow-s1: 0 1px 4px 0 light-dark(#00000014, #00000080);
+  --seed-shadow-s2: 0 2px 10px 0 light-dark(#0000001a, #000000ad);
+  --seed-shadow-s3: 0 4px 16px 0 light-dark(#0000001f, #000c);
 
   /* 간격 (4px 그리드) */
   --seed-dimension-x1: 4px;
@@ -120,60 +126,4 @@
   --seed-timing-function-easing: cubic-bezier(.35, 0, .35, 1);
   --seed-timing-function-enter: cubic-bezier(0, 0, .15, 1);
   --seed-timing-function-exit: cubic-bezier(.35, 0, 1, 1);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* 팔레트 · 다크 */
-    --seed-color-palette-gray-00: #000;
-    --seed-color-palette-gray-100: #16171b;
-    --seed-color-palette-gray-200: #1d2025;
-    --seed-color-palette-gray-300: #2b2e35;
-    --seed-color-palette-gray-400: #393d46;
-    --seed-color-palette-gray-500: #5b606a;
-    --seed-color-palette-gray-600: #868b94;
-    --seed-color-palette-gray-700: #b0b3ba;
-    --seed-color-palette-gray-800: #dcdee3;
-    --seed-color-palette-gray-900: #e9eaec;
-    --seed-color-palette-gray-1000: #f3f4f5;
-    --seed-color-palette-static-white-alpha-50: #ffffff0d;
-    --seed-color-palette-static-white-alpha-100: #ffffff17;
-    --seed-color-palette-static-white-alpha-200: #ffffff20;
-    --seed-color-palette-static-white-alpha-300: #ffffff2e;
-    --seed-color-palette-blue-100: #202742;
-    --seed-color-palette-blue-600: #1e82eb;
-    --seed-color-palette-blue-700: #41a2f9;
-    --seed-color-palette-yellow-100: #302819;
-    --seed-color-palette-yellow-300: #543e15;
-    --seed-color-palette-yellow-900: #e5d49b;
-
-    /* 시맨틱 · 다크 (SEED 매핑 그대로) */
-    --seed-color-fg-neutral-inverted: var(--seed-color-palette-gray-100);
-    --seed-color-bg-layer-basement: var(--seed-color-palette-gray-00);
-    --seed-color-bg-layer-default: var(--seed-color-palette-gray-100);
-    --seed-color-bg-layer-fill: var(--seed-color-palette-gray-200);
-    --seed-color-bg-layer-floating: var(--seed-color-palette-gray-200);
-    --seed-color-bg-neutral-weak: var(--seed-color-palette-gray-300);
-    --seed-color-bg-neutral-weak-alpha: var(--seed-color-palette-static-white-alpha-200);
-    --seed-color-bg-neutral-weak-alpha-pressed: var(--seed-color-palette-static-white-alpha-300);
-    --seed-color-stroke-neutral-subtle: var(--seed-color-palette-static-white-alpha-50);
-    --seed-color-stroke-neutral-muted: var(--seed-color-palette-static-white-alpha-100);
-
-    /* 브랜드 · 다크 */
-    --seed-color-bg-brand-solid: #2f8a6b;
-    --seed-color-bg-brand-solid-pressed: #3a9c7b;
-    --seed-color-bg-brand-weak: #1a2f27;
-    --seed-color-bg-brand-weak-pressed: #22392f;
-    --seed-color-fg-brand: #6fcfa8;
-    --seed-color-fg-brand-contrast: #8fdcbd;
-    --seed-color-stroke-brand-solid: #2f8a6b;
-    --seed-color-stroke-brand-weak: #2b4a3d;
-    --brief-mark: #3d4a1e;
-    --brief-mark-soft: #2e3a1a;
-    --brief-star: #e0a83a;
-
-    --seed-shadow-s1: 0 1px 4px 0 #00000080;
-    --seed-shadow-s2: 0 2px 10px 0 #000000ad;
-    --seed-shadow-s3: 0 4px 16px 0 #000c;
-  }
 }

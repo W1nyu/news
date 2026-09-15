@@ -129,6 +129,10 @@ $('settings').onclick=async()=>{
   catch{$('keyword-status').textContent='설정을 불러오지 못했습니다. 서버를 확인하고 다시 열어 주세요.';}
 };
 $('keyword-close').onclick=()=>$('keyword-dialog').close();
+const THEMES=['system','light','dark'];const THEME_LABEL={system:'시스템 설정',light:'라이트',dark:'다크'};
+function applyTheme(mode){if(!THEMES.includes(mode))mode='system';if(mode==='system')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=mode;const b=$('theme');b.dataset.themeMode=mode;b.setAttribute('aria-label',`테마: ${THEME_LABEL[mode]}`);b.title=`테마: ${THEME_LABEL[mode]} (누르면 ${THEME_LABEL[THEMES[(THEMES.indexOf(mode)+1)%3]]})`;}
+applyTheme(store.load('briefing.theme.v1','system'));
+$('theme').onclick=()=>{const next=THEMES[(THEMES.indexOf($('theme').dataset.themeMode)+1)%3];store.save('briefing.theme.v1',next);applyTheme(next);};
 $('keyword-add').onclick=()=>{if($('keyword-rows').children.length>=100){$('keyword-status').textContent='최대 100개까지 등록할 수 있습니다.';return;}keywordRow().querySelector('input').focus();};
 $('keyword-form').onsubmit=async e=>{
   e.preventDefault();const rules=[...document.querySelectorAll('.keyword-row')].map(row=>({keyword:row.querySelector('.keyword-name').value.trim(),weight:Number(row.querySelector('.keyword-weight').value)}));

@@ -8,7 +8,7 @@
 
 - **브랜드 색은 딥그린 유지**: SEED carrot 자리를 `#1b5344` 계열로 대체. 라이트 `bg-brand-solid #1b5344 / fg-brand #24704f / bg-brand-weak #e8f1ec`, 다크 `#2f8a6b / #6fcfa8 / #1a2f27`.
 - **나머지 토큰은 SEED 그대로**: gray 00~1000, alpha, blue(정보·포커스), yellow(경고), radius r1~r6, dimension x1~x16, shadow s1~s3, duration d1~d6, 타이포 t1~t13(static px).
-- **다크 모드**: `@media (prefers-color-scheme: dark)` 한 블록 + `color-scheme: light dark`. 토글 없음.
+- **다크 모드**: 토큰을 `light-dark()`로 한 번씩 정의하고 `:root{color-scheme:light dark}`. 앱바 테마 버튼이 시스템 → 라이트 → 다크를 순환하며 `<html data-theme>`로 `color-scheme`을 고정한다. 선택은 `localStorage(briefing.theme.v1)`에 저장하고 `<head>`의 인라인 스크립트가 스타일 로드 전에 적용해 깜빡임을 막는다.
 - **폰트**: Pretendard Variable(jsDelivr dynamic subset) → 시스템 폰트 폴백.
 - **breakpoint**: SEED sm 480 / md 768 / lg 1280. `min-width`만 사용.
 
