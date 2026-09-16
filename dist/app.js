@@ -98,6 +98,7 @@ async function poll(){
   try{const status=await json('/api/status');
     state.pollFailures=0;
     Object.assign(state,{today:status.today||'',latestDate:status.latest_date??null,collectable:status.collectable_dates||[],running:Boolean(status.running)});
+    if(Number.isInteger(status.archive_days)&&status.archive_days>0)$('search').placeholder=`최근 ${status.archive_days}일 뉴스 검색`;
     setCollectButtons(state.running);
     if(state.running){state.awaiting=true;const p=status.progress;message(p&&p.total?`수집 중 · ${p.done}/${p.total}${p.section?' '+p.section:''}`:'뉴스를 수집하고 있습니다.',p&&p.total?p.done/p.total:0);renderBanner();setTimeout(poll,2000);return;}
     if(state.awaiting){state.awaiting=false;

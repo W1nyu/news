@@ -5,9 +5,9 @@ import os
 import re
 import time
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 from bs4 import BeautifulSoup
 from article_details import inspect_article, bigrams, dice
@@ -29,6 +29,16 @@ CHECKPOINTS={
 DIRECTION_PAIRS=[('상승','하락'),('증가','감소'),('매수','매도'),('흑자','적자'),('인상','인하'),('확대','축소'),('급등','급락'),('강세','약세'),('증설','축소'),('상향','하향'),('호조','부진'),('반등','하락')]
 RELATED_LIMIT=4
 EXTRA_FETCH_LIMIT=8
+LIST_TEMPLATE='https://news.naver.com/section/template/SECTION_ARTICLE_LIST_FOR_LATEST'
+DEFAULT_ARCHIVE_DAYS=90
+
+def load_config():
+    return json.loads((ROOT/'config/sections.json').read_text(encoding='utf-8'))
+
+def archive_days():
+    """How many days of reports the history/search index covers; older daily files stay on disk."""
+    try: return max(1,int(load_config().get('archive_days',DEFAULT_ARCHIVE_DAYS)))
+    except (OSError,ValueError,TypeError): return DEFAULT_ARCHIVE_DAYS
 
 def title_key(title):
     text=re.sub(r'\[[^\]]*\]|\([^)]*\)|<[^>]*>',' ',str(title or ''))
@@ -95,6 +105,36 @@ def candidates(page):
             seen.add(url);results.append({'url':url,'title':title})
     return results
 
+def list_url(section_id,date=None,cursor=None,page=1):
+    """Naver's section list template; `date` (YYYY-MM-DD) selects a day's list, `cursor` the next page."""
+    return LIST_TEMPLATE+'?'+urlencode({'sid':'101','sid2':section_id,'cluid':'','pageNo':page,'date':(date or '').replace('-',''),'next':cursor or ''})
+
+def template_html(text):
+    payload=json.loads(text)
+    rendered=payload.get('renderedComponent') if isinstance(payload,dict) else None
+    html=rendered.get('SECTION_ARTICLE_LIST_FOR_LATEST') if isinstance(rendered,dict) else None
+    if not isinstance(html,str): raise ValueError('Section list template changed')
+    return html
+
+def next_cursor(html):
+    match=re.search(r'data-cursor-name="next"[^>]*data-cursor="([^"]+)"',html)
+    return match[1] if match else None
+
+def section_candidates(section,target_date=None):
+    """First page from the section HTML (or the dated template list), then cursor pages until candidate_limit.
+    A failing later page keeps what was gathered so far; only the first page can fail the section."""
+    page=template_html(fetch(list_url(section['id'],target_date))) if target_date else fetch(f"https://news.naver.com/breakingnews/section/101/{section['id']}")
+    options=candidates(page);cursor=next_cursor(page);page_no=2
+    while len(options)<section['candidate_limit'] and cursor:
+        time.sleep(.2)
+        try: html=template_html(fetch(list_url(section['id'],target_date,cursor,page_no)))
+        except (OSError,ValueError): break
+        seen={o['url'] for o in options}
+        more=[o for o in candidates(html) if o['url'] not in seen]
+        if not more: break
+        options.extend(more);cursor=next_cursor(html);page_no+=1
+    return options[:section['candidate_limit']]
+
 def valid_time(value, now, age):
     try:
         stamp=datetime.fromisoformat(value)
@@ -111,7 +151,7 @@ def published_date(value):
     except (TypeError,ValueError,AttributeError): return None
 
 def collect(target_date=None,progress=None):
-    config=json.loads((ROOT/'config/sections.json').read_text(encoding='utf-8'))
+    config=load_config()
     rules=load_rules()
     keywords=[r['keyword'] for r in rules]
     # Negative weights demote titles; they must not promote sentences inside a summary.
@@ -126,7 +166,6 @@ def collect(target_date=None,progress=None):
     used=set();titles=set();gathered=0;hits=0;selected_all=[]
     for index,section in enumerate(sections,1):
         selected=[]
-        url=f"https://news.naver.com/breakingnews/section/101/{section['id']}"
         def examine(option):
             """Cached or fresh inspection plus time-window checks; counts the exclusion and returns details or None."""
             nonlocal hits
@@ -170,7 +209,7 @@ def collect(target_date=None,progress=None):
             excluded['grouped_overflow']+=1
             return True
         try:
-            options=candidates(fetch(url))[:section['candidate_limit']]
+            options=section_candidates(section,target_date)
             if not options: raise ValueError('Section article list is empty')
             gathered+=len(options)
             # Preserve list order among equal scores; prefer user keywords.
@@ -220,7 +259,12 @@ def save_report(payload):
     for folder in (DATA,PUBLIC):
         atomic_json(folder/f"{payload['date']}.json",payload)
     history=[];search=[];latest=None
-    for path in sorted(DATA.glob('????-??-??.json'),reverse=True):
+    paths=sorted(DATA.glob('????-??-??.json'),reverse=True)
+    # The index covers archive_days ending at the newest report; older daily files are kept but not indexed.
+    try: cutoff=(date.fromisoformat(paths[0].stem)-timedelta(days=archive_days()-1)).isoformat()
+    except (IndexError,ValueError): cutoff=''
+    for path in paths:
+        if path.stem<cutoff: continue
         try:
             report=json.loads(path.read_text(encoding='utf-8'))
             if report.get('schema_version')!=4: continue

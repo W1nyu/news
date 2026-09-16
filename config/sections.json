@@ -1,6 +1,7 @@
 {
   "max_age_hours": 72,
   "cache_minutes": 30,
+  "archive_days": 90,
   "sections": [
     {"id":"259", "name":"금융", "minimum":3, "limit":9, "candidate_limit":60},
     {"id":"258", "name":"증권", "minimum":3, "limit":9, "candidate_limit":60},

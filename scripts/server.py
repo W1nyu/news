@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from keyword_settings import load_rules, save_rules
-from naver_pipeline import collectable_dates, DATA, KST
+from naver_pipeline import collectable_dates, archive_days, DATA, KST
 
 ROOT=Path(__file__).resolve().parents[1]
 LOCK=threading.Lock()
@@ -25,7 +25,7 @@ def status_payload(now=None):
     latest=read_json(DATA/'latest.json')
     progress=read_json(DATA/'progress.json') if STATUS['running'] else None
     return {**STATUS,'progress':progress if isinstance(progress,dict) else None,'today':now.date().isoformat(),
-            'latest_date':latest.get('date') if isinstance(latest,dict) else None,'collectable_dates':collectable_dates(now)}
+            'latest_date':latest.get('date') if isinstance(latest,dict) else None,'collectable_dates':collectable_dates(now),'archive_days':archive_days()}
 
 def parse_collect_request(raw,allowed):
     if not raw.strip(): return None

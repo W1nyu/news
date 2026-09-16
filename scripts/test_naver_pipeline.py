@@ -4,7 +4,16 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
-from naver_pipeline import ROOT, article_url, candidates, collect, valid_time, KST, collectable_dates, published_date, save_report, similar
+from naver_pipeline import ROOT, LIST_TEMPLATE, article_url, candidates, collect, valid_time, KST, collectable_dates, published_date, save_report, similar, list_url, next_cursor, template_html
+
+def list_html(sid,start,count,cursor=None):
+    """Section list markup with `count` distinct article links and an optional next-page cursor."""
+    links=''.join(f'<a class="sa_text_title" href="https://n.news.naver.com/mnews/article/999/{sid}{n:03d}">검증용 경제 기사 제목 {sid} {n}</a>' for n in range(start,start+count))
+    more=f'<button data-cursor-name="next" data-cursor="{cursor}" data-page-no="2"></button>' if cursor else ''
+    return f'<div class="section_latest_article">{links}</div>{more}'
+
+def template_json(html):
+    return json.dumps({'renderedComponent':{'SECTION_ARTICLE_LIST_FOR_LATEST':html}})
 
 class NaverPipelineTests(unittest.TestCase):
     def test_external_domain_rejected(self):
@@ -14,6 +23,63 @@ class NaverPipelineTests(unittest.TestCase):
     def test_only_section_list_not_sidebar(self):
         page='<a class="sa_text_title" href="https://n.news.naver.com/mnews/article/001/123">제외할 다른 추천 기사</a><div class="section_latest_article"><a class="sa_text_title" href="https://n.news.naver.com/mnews/article/001/456">실제 경제 섹션에 실린 기사</a></div>'
         self.assertEqual(len(candidates(page)),1)
+
+    def test_next_cursor_and_list_url(self):
+        self.assertEqual(next_cursor(list_html('259',0,1,'2026091616521433492')),'2026091616521433492')
+        self.assertIsNone(next_cursor(list_html('259',0,1)))
+        url=list_url('259','2026-09-15','2026091616521433492',2)
+        self.assertTrue(url.startswith(LIST_TEMPLATE+'?'))
+        for part in ('sid=101','sid2=259','date=20260915','next=2026091616521433492','pageNo=2'): self.assertIn(part,url)
+        first=list_url('259')
+        self.assertIn('date=&',first+'&');self.assertTrue(first.endswith('next=') or 'next=&' in first);self.assertIn('pageNo=1',first)
+
+    def test_template_html_rejects_changed_shape(self):
+        self.assertEqual(template_html(template_json('<b>x</b>')),'<b>x</b>')
+        for text in ('not json','{"renderedComponent":{}}','{"renderedComponent":[]}','{"renderedComponent":{"SECTION_ARTICLE_LIST_FOR_LATEST":5}}','[]'):
+            with self.assertRaises(ValueError): template_html(text)
+
+    def _paged_run(self,pages,candidate_limit=60,target_date=None):
+        """pages: {'html': first-page markup, cursor -> template JSON or Exception}. Returns (report, fetch mock)."""
+        def fake_fetch(url):
+            if '/breakingnews/' in url: return pages['html']
+            if url.startswith(LIST_TEMPLATE):
+                cursor=url.split('next=')[1].split('&')[0]
+                result=pages[cursor]
+                if isinstance(result,Exception): raise result
+                return result
+            return '<div>'+url+'</div>'
+        def fake_inspect(page,source,**kwargs):
+            return {'title':page.removesuffix('</div>').rsplit('/',1)[-1],'published_at':(datetime.now(KST)-timedelta(minutes=1)).isoformat(),'summary':['검증용 핵심 문장입니다.'],'access':'public_checked'},None
+        config=json.loads((ROOT/'config/sections.json').read_text(encoding='utf-8'))
+        config['sections']=[{**s,'limit':50,'candidate_limit':candidate_limit} for s in config['sections'][:1]]
+        original=Path.read_text
+        def read_text(self,*a,**k):
+            return json.dumps(config) if self.name=='sections.json' else original(self,*a,**k)
+        with patch('naver_pipeline.fetch',side_effect=fake_fetch) as fetched,patch('naver_pipeline.inspect_article',side_effect=fake_inspect),patch('naver_pipeline.load_rules',return_value=[]),patch('naver_pipeline.atomic_json'),patch('naver_pipeline.time.sleep'),patch.object(Path,'read_text',read_text):
+            return collect(target_date=target_date),fetched
+
+    def test_candidates_follow_cursor_until_limit(self):
+        # Page 2 repeats one page-1 URL; page 3 is reachable but the limit (60) is met after page 2.
+        pages={'html':list_html('259',0,36,'c1'),'c1':template_json(list_html('259',35,36,'c2')),'c2':template_json(list_html('259',71,36))}
+        report,fetched=self._paged_run(pages)
+        urls=[c.args[0] for c in fetched.call_args_list if c.args[0].startswith(LIST_TEMPLATE)]
+        self.assertEqual(len(urls),1);self.assertIn('next=c1',urls[0]);self.assertIn('pageNo=2',urls[0])
+        self.assertEqual(report['stats']['collected'],60)
+        self.assertEqual(report['topics'][0]['article_count'],50)
+        self.assertEqual(len({a['url'] for a in report['topics'][0]['articles']}),50)
+
+    def test_candidates_keep_first_page_when_next_page_fails(self):
+        for failure in (OSError('timeout'),'<html>not json</html>'):
+            report,fetched=self._paged_run({'html':list_html('259',0,36,'c1'),'c1':failure})
+            self.assertEqual(report['stats']['collected'],36);self.assertEqual(report['source_results'][0]['status'],'ok')
+
+    def test_dated_collection_uses_date_list(self):
+        yesterday=(datetime.now(KST)-timedelta(days=1)).date().isoformat()
+        pages={'html':list_html('259',0,36),'':template_json(list_html('259',0,36))}
+        report,fetched=self._paged_run(pages,target_date=yesterday)
+        urls=[c.args[0] for c in fetched.call_args_list]
+        self.assertFalse(any('/breakingnews/' in u for u in urls))
+        self.assertTrue(urls[0].startswith(LIST_TEMPLATE));self.assertIn(f"date={yesterday.replace('-','')}",urls[0])
 
     def test_dates_reject_future_naive_and_old(self):
         now=datetime.now(KST)
@@ -59,9 +125,10 @@ class NaverPipelineTests(unittest.TestCase):
     def test_target_date_filters_and_progress_called(self):
         now=datetime.now(KST);yesterday=(now-timedelta(days=1)).date().isoformat()
         def fake_fetch(url):
-            if '/breakingnews/' in url:
-                sid=url.rsplit('/',1)[-1]
-                return '<div class="section_latest_article">'+''.join(f'<a class="sa_text_title" href="https://n.news.naver.com/mnews/article/999/{sid}{n}">검증용 경제 기사 제목 {sid} {n}</a>' for n in range(12))+'</div>'
+            if url.startswith(LIST_TEMPLATE):
+                self.assertIn(f"date={yesterday.replace('-','')}",url)
+                sid=url.split('sid2=')[1].split('&')[0]
+                return template_json('<div class="section_latest_article">'+''.join(f'<a class="sa_text_title" href="https://n.news.naver.com/mnews/article/999/{sid}{n}">검증용 경제 기사 제목 {sid} {n}</a>' for n in range(12))+'</div>')
             return '<div>'+url+'</div>'
         today_stamp=now-timedelta(minutes=1)
         if today_stamp.date()!=now.date(): today_stamp=now.replace(hour=0,minute=0,second=1,microsecond=0)
@@ -205,5 +272,19 @@ class NaverPipelineTests(unittest.TestCase):
                 self.assertEqual([h['date'] for h in json.loads((data/'history.json').read_text(encoding='utf-8'))],['2026-09-13','2026-09-12'])
                 self.assertEqual(json.loads((data/'run-status.json').read_text(encoding='utf-8'))['date'],'2026-09-12')
                 self.assertEqual(len(json.loads((public/'search.json').read_text(encoding='utf-8'))),2)
+
+    def test_save_report_trims_index_to_archive_days(self):
+        def payload(date):
+            return {'schema_version':4,'date':date,'generated_at':f'{date}T08:00:00+09:00','topics':[{'id':'259','name':'금융','articles':[{'url':f'https://n.news.naver.com/mnews/article/001/{date[-2:]}','title':f'{date} 기사','summary':['요약'],'published_at':f'{date}T07:00:00+09:00','source':'테스트','source_id':'naver'}]}],
+                    'stats':{'selected':1},'source_results':[],'excluded':{}}
+        with tempfile.TemporaryDirectory() as folder:
+            data=Path(folder)/'data';public=Path(folder)/'public';data.mkdir(parents=True)
+            for date in ('2026-09-10','2026-09-12'): (data/f'{date}.json').write_text(json.dumps(payload(date)),encoding='utf-8')
+            with patch('naver_pipeline.DATA',data),patch('naver_pipeline.PUBLIC',public),patch('naver_pipeline.archive_days',return_value=3):
+                save_report(payload('2026-09-14'))
+            self.assertEqual([h['date'] for h in json.loads((data/'history.json').read_text(encoding='utf-8'))],['2026-09-14','2026-09-12'])
+            self.assertEqual([a['date'] for a in json.loads((public/'search.json').read_text(encoding='utf-8'))],['2026-09-14','2026-09-12'])
+            self.assertEqual(json.loads((data/'latest.json').read_text(encoding='utf-8'))['date'],'2026-09-14')
+            self.assertTrue((data/'2026-09-10.json').exists())
 
 if __name__=='__main__': unittest.main()

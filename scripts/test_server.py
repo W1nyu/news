@@ -30,6 +30,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(idle['today'],'2026-09-14');self.assertEqual(idle['latest_date'],'2026-09-13')
         self.assertEqual(idle['collectable_dates'],['2026-09-14','2026-09-13','2026-09-12'])
         self.assertIsNone(idle['progress']);self.assertEqual(busy['progress']['done'],2)
+        self.assertIsInstance(idle['archive_days'],int);self.assertGreater(idle['archive_days'],0)
 
     def test_status_payload_without_files(self):
         with tempfile.TemporaryDirectory() as folder,patch('server.DATA',Path(folder)),patch.dict(server.STATUS,{'running':True}):
