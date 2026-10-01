@@ -5,6 +5,10 @@
 :root { color-scheme: light dark; }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
+/* 글자 크기(보기 메뉴): 목록·상세의 읽기 글자에만 곱한다. */
+:root { --reading-scale: 1; }
+:root[data-font="s"] { --reading-scale: .9; }
+:root[data-font="l"] { --reading-scale: 1.15; }
 :root {
   /* 팔레트 */
   --seed-color-palette-gray-00: light-dark(#fff, #000);
