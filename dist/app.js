@@ -53,7 +53,7 @@ function renderDates(){const dates=new Map(state.history.map(h=>[h.date,true]));
 function render(){
   $('categories').innerHTML=['전체',...SECTIONS,SAVED].map(s=>`<button type="button" data-category="${esc(s)}" aria-pressed="${state.category===s}">${esc(s)}${s===SAVED?` (${state.bookmarks.size})`:''}</button>`).join('');
   renderHeadlines();
-  if(state.missingDate){$('articles').innerHTML=`<div class="missing"><p>${esc(state.missingDate)} 보고서가 없습니다.</p><button type="button" data-collect="${esc(state.missingDate)}">이 날짜 보고서 만들기</button></div>`;$('more').hidden=true;$('updated').textContent='';setCollectButtons(state.running);renderBanner();return;}
+  if(state.missingDate&&state.category!==SAVED){$('articles').innerHTML=`<div class="missing"><p>${esc(state.missingDate)} 보고서가 없습니다.</p><button type="button" data-collect="${esc(state.missingDate)}">이 날짜 보고서 만들기</button></div>`;$('more').hidden=true;$('updated').textContent='';setCollectButtons(state.running);renderBanner();return;}
   const saved=state.category===SAVED;
   let articles=baseArticles();renderPublishers(articles);
   if(state.category!=='전체'&&!saved)articles=articles.filter(a=>a.topic===state.category);
@@ -78,7 +78,7 @@ async function loadArchive(){
   catch{message('보관함 검색을 불러오지 못했습니다. 새로고침해 주세요.');}
 }
 function setCollectButtons(disabled){document.querySelectorAll('[data-collect]').forEach(b=>{b.disabled=disabled;});}
-$('date').onchange=()=>{state.query='';$('search').value='';state.limit=18;const option=$('date').selectedOptions[0];if(option&&option.dataset.missing){state.missingDate=$('date').value;render();return;}if($('date').value===WEEK){state.request++;state.missingDate='';state.report=weekReport();message('');render();return;}loadReport($('date').value);};
+$('date').onchange=()=>{state.query='';$('search').value='';state.limit=18;const option=$('date').selectedOptions[0];if(option&&option.dataset.missing){state.request++;state.report=null;state.missingDate=$('date').value;message('');render();return;}if($('date').value===WEEK){state.request++;state.missingDate='';state.report=weekReport();message('');render();return;}loadReport($('date').value);};
 $('search').oninput=()=>{state.query=$('search').value.trim().toLocaleLowerCase();state.limit=18;if(state.query&&state.missingDate){state.missingDate='';$('date').value='';}render();};
 $('categories').onclick=e=>{if(e.target.dataset.category){state.category=e.target.dataset.category;state.limit=18;render();}};
 $('articles').onclick=e=>{
@@ -88,7 +88,7 @@ $('articles').onclick=e=>{
   const link=e.target.closest('h2 a');if(link){markRead(link.closest('.card').dataset.url);link.closest('.card').classList.add('read');return;}
   const date=e.target.dataset.date;if(!date)return;$('date').value=date;state.query='';$('search').value='';state.category='전체';state.limit=18;loadReport(date);};
 $('articles').addEventListener('auxclick',e=>{if(e.button!==1)return;const rel=e.target.closest('[data-related]');if(rel){markRead(rel.dataset.related);rel.closest('li').classList.add('read');return;}const link=e.target.closest('h2 a');if(link){markRead(link.closest('.card').dataset.url);link.closest('.card').classList.add('read');}});
-$('headlines').onclick=e=>{const button=e.target.closest('[data-index]');if(!button)return;const i=Number(button.dataset.index);state.category='전체';state.query='';$('search').value='';if(state.limit<=i)state.limit=Math.ceil((i+1)/18)*18;render();const target=$('articles').children[i];if(!target)return;target.scrollIntoView({behavior:'smooth',block:'center'});target.classList.add('flash');setTimeout(()=>target.classList.remove('flash'),1500);};
+$('headlines').onclick=e=>{const button=e.target.closest('[data-index]');if(!button)return;const i=Number(button.dataset.index);state.category='전체';state.query='';state.publisher='';$('search').value='';if(state.limit<=i)state.limit=Math.ceil((i+1)/18)*18;render();const target=$('articles').children[i];if(!target)return;target.scrollIntoView({behavior:'smooth',block:'center'});target.classList.add('flash');setTimeout(()=>target.classList.remove('flash'),1500);};
 $('more').onclick=()=>{state.limit+=18;render();};
 $('range').onchange=()=>{state.range=$('range').value;state.limit=18;render();};
 $('from').onchange=()=>{state.from=$('from').value;state.limit=18;render();};
